@@ -1,0 +1,1 @@
+# spoldzielnia_mieszkaniowa
