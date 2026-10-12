@@ -1,0 +1,2 @@
+-- ETAP 1: baza danych nie jest jeszcze wymagana.
+-- W etapie 2 osoba odpowiedzialna wprowadzi tabele i instrukcje importu.

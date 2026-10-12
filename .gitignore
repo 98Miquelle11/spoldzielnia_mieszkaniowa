@@ -1,0 +1,22 @@
+# Hasla i ustawienia lokalne
+/config/database.local.php
+/config/.env
+.env
+.env.*
+!.env.example
+
+# Dane osobowe, wyslane dokumenty i pliki tymczasowe
+/storage/uploads/*
+!/storage/uploads/.gitkeep
+/storage/logs/
+*.log
+
+# Pliki robocze systemu i edytora
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Pakiety i cache, jesli zostana dodane
+/vendor/
+/node_modules/

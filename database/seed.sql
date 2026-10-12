@@ -1,0 +1,2 @@
+-- ETAP 1: dane testowe nie sa jeszcze wymagane.
+-- W etapie 2 pojawia sie dane startowe i sposob tworzenia kont lokalnych.
