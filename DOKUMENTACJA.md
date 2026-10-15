@@ -7,6 +7,7 @@
 **Technologie:** PHP, MySQL/MariaDB, Bootstrap  
 **Środowisko:** Localhost — XAMPP  
 **Zespół:** 12 osób  
+**Stan realizacji:** Ukończone etapy 1 i 2
 
 ---
 
@@ -20,14 +21,43 @@ Projekt będzie uruchamiany lokalnie. Nie przewiduje się wdrożenia produkcyjne
 
 ---
 
-## 2. Funkcjonalności
+## 2. Aktualny stan realizacji
 
-### 2.1. Spółdzielnia
+Zakończono dwa pierwsze etapy projektu:
+- Etap 1 - fundament projektu: struktura katalogów, szkielet aplikacji PHP, interfejs Bootstrap, nawigacja i dokumentacja.
+- Etap 2 - baza i użytkownicy: baza MySQL/MariaDB, połączenie PDO, logowanie, wylogowanie oraz obsługa ról mieszkańca i administratora.
+Pozostałe moduły będą dołączane do istniejącej aplikacji. Obecność pozycji w menu nie oznacza ukończenia danej funkcjonalności. Niezaimplementowane moduły powinny prezentować strony informacyjne.
 
-- Struktura organizacyjna spółdzielni.
-- Historia osiedla.
+| Etap | Zakres | Status |
+| --- | --- | --- |
+| 1 | Fundament projektu | Ukończony |
+| 2 | Baza danych i użytkownicy | Ukończony |
+| 3 | Struktura i historia spółdzielni | Planowany |
+| 4 | Imprezy kulturalne | Planowany |
+| 5 | Przetargi | Planowany |
+| 6 | Wynajem | Planowany |
+| 7 | Kalendarz | Planowany |
+| 8 | Inwestycje | Planowany |
+| 9 | Dokumenty | Planowany |
+| 10 | Czat mieszkańców | Planowany |
+| 11 | E-mieszkaniec | Planowany |
+| 12 | Kontakt i wydanie końcowe | Planowany |
 
-### 2.2. Ogłoszenia
+---
+
+## 3. Funkcjonalności
+
+### 3.1. Fundament i użytkownicy - wykonane
+- Szkielet aplikacji PHP.
+- Interfejs wykorzystujący Bootstrap.
+- Nawigacja między podstronami.
+- Baza danych MySQL/MariaDB.
+- Połączenie z bazą przez PDO.
+- Logowanie i wylogowanie użytkowników.
+- Rozróżnianie roli mieszkańca i administratora.
+- Mechanizm kontroli dostępu oparty na rolach.
+
+### 3.2. Ogłoszenia
 
 - Imprezy kulturalne.
 - Przetargi.
@@ -36,19 +66,19 @@ Projekt będzie uruchamiany lokalnie. Nie przewiduje się wdrożenia produkcyjne
 
 Kalendarz będzie stosował oznaczenia kolorystyczne oraz legendę kategorii.
 
-### 2.3. Inwestycje
+### 3.3. Inwestycje
 
 - Lista inwestycji.
 - Opisy i szczegóły.
 - Statusy oraz postęp prac.
 
-### 2.4. Strefa mieszkańca
+### 3.4. Strefa mieszkańca
 
 - Druki i wnioski.
 - Statut i regulaminy.
 - Czat mieszkańców.
 
-### 2.5. E-mieszkaniec
+### 3.5. E-mieszkaniec
 
 - Wypełnianie formularzy online.
 - Przesyłanie wniosków.
@@ -56,14 +86,14 @@ Kalendarz będzie stosował oznaczenia kolorystyczne oraz legendę kategorii.
 - Sprawdzanie statusu zgłoszenia.
 - Demonstracyjny proces podpisywania dokumentów.
 
-### 2.6. Kontakt
+### 3.6. Kontakt
 
 - Dane kontaktowe spółdzielni.
 - Formularz wiadomości.
 
 ---
 
-## 3. Role użytkowników
+## 4. Role użytkowników
 
 **Gość** — przegląda publiczne informacje.
 
@@ -73,16 +103,16 @@ Kalendarz będzie stosował oznaczenia kolorystyczne oraz legendę kategorii.
 
 ---
 
-## 4. Instalacja i uruchamianie
+## 5. Instalacja i uruchamianie
 
-### 4.1. Wymagania
+### 5.1. Wymagania
 
 - Git
 - XAMPP z Apache i PHP
 - MySQL lub MariaDB — od etapu 2
 - Przeglądarka internetowa
 
-### 4.2. Pobranie projektu
+### 5.2. Pobranie projektu
 
 Otwórz terminal i wpisz:
 
@@ -95,7 +125,7 @@ git clone https://github.com/NAZWA_KONTA/spoldzielnia_mieszkaniowa.git
 
 Następnie uruchom Apache w XAMPP.
 
-### 4.3. Otwarcie aplikacji
+### 5.3. Otwarcie aplikacji
 
 W przeglądarce otwórz:
 
@@ -103,7 +133,7 @@ W przeglądarce otwórz:
 
 Po pierwszym etapie aplikacja działa bez bazy danych.
 
-### 4.4. Konfiguracja bazy danych
+### 5.4. Konfiguracja bazy danych
 
 Od etapu 2:
 
@@ -120,7 +150,7 @@ Od etapu 2:
 
 ---
 
-## 5. Struktura projektu
+## 6. Struktura projektu
 
 ```text
 spoldzielnia_mieszkaniowa/
@@ -152,7 +182,7 @@ Opis katalogów i plików:
 
 ---
 
-## 6. Organizacja pracy
+## 7. Organizacja pracy
 
 Projekt podzielono na **12 etapów odpowiadających 12 osobom**.
 
@@ -168,7 +198,7 @@ Połączenie zmian następuje po ich sprawdzeniu przez innego członka zespołu.
 
 ---
 
-## 7. Bezpieczeństwo
+## 8. Bezpieczeństwo
 
 Projekt powinien stosować:
 
@@ -186,7 +216,30 @@ Funkcja podpisu Profilem Zaufanym pozostaje demonstracją. Nie potwierdza rzeczy
 
 ---
 
-## 8. Warunki ukończenia
+## 9. Dokumentowanie i testowanie modułów
+
+Każdy autor powinien opisać:
+- zakres wykonanej funkcji;
+- dodane i zmienione pliki;
+- zmiany bazy danych;
+- reguły walidacji;
+- zastosowane zabezpieczenia;
+- dodatkową konfigurację;
+- instrukcję użycia;
+- wyniki testów;
+- znane ograniczenia.
+Testy powinny obejmować:
+- poprawne wykonanie operacji;
+- błędne i niekompletne dane;
+- brak wymaganych uprawnień;
+- nieistniejący rekord lub pustą listę;
+- działanie na urządzeniach mobilnych;
+- wpływ zmian na istniejące funkcje.
+Wyniki należy zapisywać wraz z datą, osobą testującą i wersją kodu
+
+---
+
+## 10. Warunki ukończenia
 
 Projekt zostanie uznany za ukończony, kiedy:
 
@@ -201,4 +254,5 @@ Projekt zostanie uznany za ukończony, kiedy:
 
 ---
 
-**Status projektu:** Dokumentacja wstępna — podlega aktualizacji wraz z rozwojem aplikacji.
+**Status projektu:** rozwój aplikacji po ukończeniu etapów 1 i 2.
+**Status dokumentacji:** wersja rozwojowa - wymaga uzupełnienia szczegółów konfiguracji oraz aktualizacji podczas realizacji kolejnych etapów.
