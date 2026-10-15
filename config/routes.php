@@ -17,4 +17,5 @@ return [
     'czat' => ['title' => 'Czat mieszkańców', 'group' => 'Strefa mieszkańca', 'description' => 'Miejsce rozmów zalogowanych mieszkańców.'],
     'e-mieszkaniec' => ['title' => 'E-mieszkaniec', 'group' => null, 'description' => 'Obsługa spraw i wniosków online.'],
     'kontakt' => ['title' => 'Kontakt', 'group' => null, 'description' => 'Dane kontaktowe i formularz.'],
+    'login' => ['title' => 'Logowanie', 'group' => null],
 ];

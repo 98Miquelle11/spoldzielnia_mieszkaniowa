@@ -1,3 +1,4 @@
+<?php require_once 'auth.php'; ?>
 <!doctype html>
 <html lang="pl">
 <head>
@@ -50,6 +51,20 @@
               </li>
             <?php endif; ?>
           <?php endforeach; ?>
+          
+          <!-- TUTAJ DODANO PRZYCISK LOGOWANIA/WYLOGOWANIA -->
+          <?php if (isLoggedIn()): ?>
+              <li class="nav-item ms-lg-3">
+                  <a class="nav-link text-danger fw-bold" href="src/logout.php">Wyloguj się</a>
+              </li>
+          <?php else: ?>
+              <li class="nav-item ms-lg-3">
+                  <!-- Zmiana w linijce poniżej: -->
+                  <a class="nav-link text-primary fw-bold" href="index.php?page=login">Zaloguj</a>
+              </li>
+          <?php endif; ?>
+          <!-- KONIEC PRZYCISKU LOGOWANIA -->
+
         </ul>
       </div>
     </div>
