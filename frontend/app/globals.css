@@ -1,0 +1,26 @@
+:root { --brand: #245849; --brand-dark: #14392f; --light: #f1f7f3; }
+body { background: #fbfcfb; color: #1f2a26; }
+.navbar-brand { color: var(--brand-dark); line-height: 1.2; }
+.brand-subtitle { font-size: .72rem; letter-spacing: .03em; }
+.hero { background: linear-gradient(115deg, #eaf4ed, #f7faf6); border-bottom: 1px solid #e1ebe3; }
+.hero-lead { max-width: 650px; }
+.letter-spacing { letter-spacing: .12em; }
+.btn-primary { background: var(--brand); border-color: var(--brand); }
+.btn-primary:hover, .btn-primary:focus { background: var(--brand-dark); border-color: var(--brand-dark); }
+.btn-outline-primary { color: var(--brand); border-color: var(--brand); }
+.btn-outline-primary:hover { background: var(--brand); border-color: var(--brand); }
+.link-primary { color: var(--brand) !important; }
+.card { border-radius: 1rem; }
+.placeholder-card { background: white; border: 1px solid #e7ebe8; border-radius: 1rem; }
+.footer { background: #f2f5f2; color: #536259; }
+@media (max-width: 575px) { .hero .btn { margin: .4rem .2rem .1rem 0 !important; } }
+
+/* Menu React/native details: bez skryptu Bootstrap i z obsługą klawiatury. */
+.nav-group { position: relative; }
+.nav-group summary { cursor: pointer; list-style: none; }
+.nav-group summary::-webkit-details-marker { display: none; }
+.nav-group summary::after { content: ""; display: inline-block; margin-left: .4em; vertical-align: .2em; border-top: .3em solid; border-right: .3em solid transparent; border-left: .3em solid transparent; }
+.nav-submenu { position: absolute; z-index: 20; min-width: 13rem; padding: .5rem 0; margin: 0; list-style: none; border: 1px solid #e7ebe8; border-radius: .4rem; background: #fff; }
+.dropdown-item.active { background-color: var(--brand); }
+.skip-link:focus { display: block; padding: .75rem; background: white; }
+@media (max-width: 991px) { .nav-submenu { position: static; box-shadow: none !important; } }
