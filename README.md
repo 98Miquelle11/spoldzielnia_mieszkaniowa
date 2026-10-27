@@ -1,19 +1,13 @@
 # Mirmiłowo — Go + Next.js + MySQL
 
-Migracja aktualnej aplikacji PHP z repozytorium
-https://github.com/98Miquelle11/spoldzielnia_mieszkaniowa
-(archiwum o identyfikatorze commita `8565cde9f979d7514b232740942578b2a7cc8bd9`).
-
-Backend jest napisany w Go, frontend w Next.js/React/TypeScript. Baza pozostaje
-MySQL/MariaDB, a definicje tabel są napisane w SQL. Zachowano treści, zieloną
-kolorystykę, Bootstrap 5.3.8 i responsywny układ. Bootstrap jest teraz instalowany
-przez npm, więc przeglądarka nie musi pobierać go z CDN.
+Backend jest napisany w Go, frontend w Next.js/React/TypeScript. Baza to
+MySQL/MariaDB.
 
 ## Co działa
 
 - Strona główna i sześć kafelków sekcji.
 - Wszystkie pozycje nawigacji z oryginalnego `config/routes.php`.
-- Podstrony „Etap w przygotowaniu”, polska strona 404.
+- Podstrony „Etap w przygotowaniu”.
 - Logowanie, odczyt bieżącej sesji i wylogowanie przez API Go.
 - Konta `mieszkaniec` i `admin`; narzędzie do ich tworzenia.
 - Trwałe sesje MySQL: pozostają aktywne po restarcie backendu, wygasają po 8 h.
@@ -81,7 +75,7 @@ Backend domyślnie nasłuchuje lokalnie na `127.0.0.1:8080`.
 
 ## 3. Utwórz konta
 
-W drugim terminalu przejdź do `backend` i ustaw te same zmienne bazy co w kroku 2.
+W drugim terminalu (koniecznie drugim, nie wyłączaj pierwszego) przejdź do `backend` i ustaw te same zmienne bazy co w kroku 2.
 Zmienne PowerShell obowiązują tylko w terminalu, w którym je ustawiono.
 
 ```powershell
