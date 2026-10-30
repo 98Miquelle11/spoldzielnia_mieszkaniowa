@@ -9,7 +9,6 @@ import (
 	"github.com/go-sql-driver/mysql"
 )
 
-// Open reads configuration from the process environment; no secrets are committed.
 func Open(ctx context.Context) (*sql.DB, error) {
 	cfg := mysql.NewConfig()
 	cfg.Net = "tcp"
@@ -19,6 +18,7 @@ func Open(ctx context.Context) (*sql.DB, error) {
 	cfg.DBName = env("DB_NAME", "mirmilowo")
 	cfg.ParseTime = true
 	cfg.Loc = time.UTC
+	cfg.Params = map[string]string{"time_zone": "'+00:00'"}
 	cfg.Collation = "utf8mb4_unicode_ci"
 	cfg.Timeout = 5 * time.Second
 	cfg.ReadTimeout = 5 * time.Second
