@@ -24,6 +24,10 @@ export function Header() {
     setOpen(false);
     document.querySelectorAll<HTMLDetailsElement>(".nav-group[open]").forEach(el => { el.open = false; });
   }, [pathname]);
+  useEffect(() => {
+    document.body.classList.toggle("admin-mode", auth.user?.role === "admin");
+    return () => document.body.classList.remove("admin-mode");
+  }, [auth.user?.role]);
   return <header>
     <nav className="navbar navbar-expand-lg bg-white border-bottom" aria-label="Nawigacja główna">
       <div className="container">
@@ -39,6 +43,12 @@ export function Header() {
                 </ul>
               </details> : <Link className={`nav-link${pathname === pageHref(entry.slug) ? " active" : ""}`} href={pageHref(entry.slug)} aria-current={pathname === pageHref(entry.slug) ? "page" : undefined}>{entry.title}</Link>}
             </li>)}
+            {auth.user?.role === "admin" && <li className="nav-item">
+              <Link className={`nav-link${pathname.startsWith("/admin/wydarzenia") ? " active" : ""}`} href="/admin/wydarzenia" aria-current={pathname.startsWith("/admin/wydarzenia") ? "page" : undefined}>Zarządzaj wydarzeniami</Link>
+            </li>}
+            {auth.user?.role === "admin" && <li className="nav-item d-flex align-items-center px-lg-2">
+              <span className="badge admin-role-badge">Administrator</span>
+            </li>}
             <li className="nav-item ms-lg-3">
               {auth.loading ? <span className="nav-link text-secondary" role="status">Sprawdzanie…</span> : auth.user ? <LogoutButton className="nav-link text-danger fw-bold" /> : <Link className="nav-link text-primary fw-bold" href="/login" aria-current={pathname === "/login" ? "page" : undefined}>Zaloguj</Link>}
             </li>

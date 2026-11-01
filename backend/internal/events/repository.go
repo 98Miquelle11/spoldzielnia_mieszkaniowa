@@ -144,6 +144,32 @@ func (r *Repository) Update(ctx context.Context, id int64, input Input) error {
 	return nil
 }
 
+func (r *Repository) SetPublished(ctx context.Context, id int64, published bool) error {
+	if err := validateID(id); err != nil {
+		return err
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("rozpoczęcie zmiany publikacji wydarzenia: %w", err)
+	}
+	defer tx.Rollback()
+	var existingID int64
+	err = tx.QueryRowContext(ctx, "SELECT id FROM cultural_events WHERE id = ? FOR UPDATE", id).Scan(&existingID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("blokowanie wydarzenia do zmiany publikacji: %w", err)
+	}
+	if _, err = tx.ExecContext(ctx, "UPDATE cultural_events SET is_published = ? WHERE id = ?", published, id); err != nil {
+		return fmt.Errorf("zmiana publikacji wydarzenia: %w", err)
+	}
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("zatwierdzanie zmiany publikacji wydarzenia: %w", err)
+	}
+	return nil
+}
+
 func (r *Repository) Delete(ctx context.Context, id int64) error {
 	if err := validateID(id); err != nil {
 		return err

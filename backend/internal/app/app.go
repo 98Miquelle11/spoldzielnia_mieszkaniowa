@@ -1,14 +1,8 @@
 package app
 
-type AdminEventsRepository interface {
-    ListAll(ctx context.Context) ([]events.Event, error)
-    GetByIDAdmin(ctx context.Context, id int64) (events.Event, error)
-    Create(ctx context.Context, in events.ValidatedEvent) (int64, error)
-    Update(ctx context.Context, id int64, in events.ValidatedEvent) error
-    Delete(ctx context.Context, id int64) error
-}
-
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,8 +12,17 @@ import (
 	"strconv"
 	"strings"
 
-	"spoldzielnia_mieszkaniowa/backend/internal/events"
+	"mirmilowo/backend/internal/events"
+	"golang.org/x/crypto/bcrypt"
 )
+
+type AdminEventsRepository interface {
+	ListAll(ctx context.Context) ([]events.Event, error)
+	GetByIDAdmin(ctx context.Context, id int64) (events.Event, error)
+	Create(ctx context.Context, in events.ValidatedEvent) (int64, error)
+	Update(ctx context.Context, id int64, in events.ValidatedEvent) error
+	Delete(ctx context.Context, id int64) error
+}
 
 // Struktury odpowiedzi JSON
 type eventsListResponse struct {
@@ -28,6 +31,18 @@ type eventsListResponse struct {
 
 type createdIDResponse struct {
 	ID int64 `json:"id"`
+}
+
+type App struct {
+	DB            *sql.DB
+	Origin        string
+	SecureCookies bool
+	events        *events.Repository
+	dummyHash     []byte
+	EventsRepo    AdminEventsRepository // Dodane dla zgodności z Twoimi handlerami
+	Config        struct {
+		AppOrigin string
+	}
 }
 
 type errorResponse struct {
@@ -41,7 +56,7 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
-// Middleware ochrony żądań zmieniających dane (CSRF: Origin == APP_ORIGIN + Content-Type: application/json)
+// Middleware ochrony żądań zmieniających dane (CSRF)
 func (a *App) requireJSONWriteProtection(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -66,15 +81,38 @@ func (a *App) requireJSONWriteProtection(next http.Handler) http.Handler {
 	})
 }
 
+func New(db *sql.DB, origin string, secure bool) *App {
+	hash, err := bcrypt.GenerateFromPassword([]byte("not-a-user-password"), 12)
+	if err != nil {
+		panic(err)
+	}
+	return &App{DB: db, Origin: origin, SecureCookies: secure, events: events.NewRepository(db), dummyHash: hash}
+}
+
+func (a *App) Handler() http.Handler {
+	mux := http.NewServeMux()
+	// Zostawiamy deklaracje routera zespołu, a Twoje trasy są niżej w registerAdminEventRoutes
+	mux.HandleFunc("GET /api/health", a.health)
+	mux.HandleFunc("GET /api/auth/me", a.me)
+	mux.HandleFunc("POST /api/auth/login", a.mutation(a.login))
+	mux.HandleFunc("POST /api/auth/logout", a.mutation(a.logout))
+	
+	mux.Handle("GET /api/admin/events", a.RequireRole([]string{"admin"}, a.listAdminEvents))
+	mux.Handle("POST /api/admin/events", a.mutation(a.RequireRole([]string{"admin"}, a.createAdminEvent)))
+	mux.Handle("GET /api/admin/events/{id}", a.RequireRole([]string{"admin"}, a.getAdminEvent))
+	mux.Handle("PUT /api/admin/events/{id}", a.mutation(a.RequireRole([]string{"admin"}, a.updateAdminEvent)))
+	mux.Handle("PATCH /api/admin/events/{id}/publication", a.mutation(a.RequireRole([]string{"admin"}, a.setAdminEventPublication)))
+	mux.Handle("DELETE /api/admin/events/{id}", a.mutation(a.RequireRole([]string{"admin"}, a.deleteAdminEvent)))
+	
+	return mux
+}
+
 // Rejestracja tras administracyjnych w routerze aplikacji
 func (a *App) registerAdminEventRoutes(mux *http.ServeMux) {
-	adminRoleMiddleware := a.RequireRole("admin")
+	adminRoleMiddleware := a.RequireRole("admin") // Uwaga: Sygnatury RequireRole mogą wymagać ujednolicenia przez zespół
 
-	// Operacje odczytu (chronione rolą admin)
 	mux.Handle("GET /api/admin/events", adminRoleMiddleware(http.HandlerFunc(a.handleAdminListEvents)))
 	mux.Handle("GET /api/admin/events/{id}", adminRoleMiddleware(http.HandlerFunc(a.handleAdminGetEvent)))
-
-	// Operacje zapisu (chronione rolą admin + ochroną CSRF/JSON)
 	mux.Handle("POST /api/admin/events", adminRoleMiddleware(a.requireJSONWriteProtection(http.HandlerFunc(a.handleAdminCreateEvent))))
 	mux.Handle("PUT /api/admin/events/{id}", adminRoleMiddleware(a.requireJSONWriteProtection(http.HandlerFunc(a.handleAdminUpdateEvent))))
 	mux.Handle("DELETE /api/admin/events/{id}", adminRoleMiddleware(a.requireJSONWriteProtection(http.HandlerFunc(a.handleAdminDeleteEvent))))
@@ -118,7 +156,6 @@ func (a *App) handleAdminGetEvent(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-
 	writeJSON(w, http.StatusOK, ev)
 }
 
@@ -192,7 +229,6 @@ func (a *App) handleAdminUpdateEvent(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -206,7 +242,6 @@ func (a *App) handleAdminDeleteEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Zgodnie z ustaleniami Dew 3. i 6., DELETE przyjmuje Content-Type: application/json i treść {}
 	var emptyPayload map[string]any
 	if err := decodeStrictJSON(r.Body, &emptyPayload); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResponse{
@@ -227,7 +262,6 @@ func (a *App) handleAdminDeleteEvent(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -11,11 +11,13 @@ MySQL/MariaDB.
 - Logowanie, odczyt bieżącej sesji i wylogowanie przez API Go.
 - Konta `mieszkaniec` i `admin`; narzędzie do ich tworzenia.
 - Trwałe sesje MySQL: pozostają aktywne po restarcie backendu, wygasają po 8 h.
+- Panel wydarzeń administratora: lista ze statusem publikacji, tworzenie,
+  edycja, publikowanie, ukrywanie i usuwanie z potwierdzeniem.
 - Przekierowania starych adresów `index.php?page=...`.
 
 Pozostałe moduły w pierwotnym repozytorium były jedynie planowane. Czat,
-wnioski, kalendarz, zarządzanie ogłoszeniami i panel administratora nadal mają
-strony informacyjne. Migracja nie dodaje ich docelowej funkcjonalności.
+wnioski, kalendarz oraz pozostałe rodzaje ogłoszeń nadal mają strony
+informacyjne. Migracja nie dodaje ich docelowej funkcjonalności.
 
 ## Wymagania
 
@@ -168,8 +170,9 @@ Wygasłe sesje są odrzucane przy odczycie. Okresowo usuń je poleceniem SQL:
 DELETE FROM mirmilowo.sessions WHERE expires_at <= UTC_TIMESTAMP();
 ```
 
-Przyszłe prywatne endpointy zabezpieczaj przez `RequireRole` po stronie Go.
-Obecny frontend rozpoznaje rolę, ale nie zawiera panelu administratora.
+Panel wydarzeń jest dostępny dla administratora pod `/admin/wydarzenia`.
+Endpointy `/api/admin/events` są zabezpieczone przez `RequireRole` po stronie Go;
+sam stan interfejsu nie stanowi kontroli uprawnień.
 Przed publicznym wdrożeniem skonfiguruj HTTPS, własne konto bazy z ograniczonymi
 uprawnieniami i ograniczanie prób logowania na reverse proxy. Nie udostępniaj
 publicznie bazy danych. Hasła i lokalne pliki środowiska pozostaw poza Git.
