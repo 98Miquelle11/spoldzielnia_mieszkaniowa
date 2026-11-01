@@ -24,7 +24,7 @@ type Event struct {
 	Description string     `json:"description"`
 	Location    string     `json:"location"`
 	StartsAt    time.Time  `json:"starts_at"`
-	EndsAt      *time.Time `json:"ends_at,omitempty"`
+	EndsAt time.Time `json:"ends_at"`
 	IsPublished bool       `json:"is_published"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
