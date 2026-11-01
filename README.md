@@ -133,6 +133,13 @@ npm run build
 npm start
 ```
 
+W przypadku blokowania skryptu npm.ps1:
+
+```powershell
+npm.cmd ci
+npm.cmd run dev
+```
+
 `npm start` uruchamia wcześniej zbudowaną wersję. Nie uruchamiaj go równocześnie
 z `npm run dev` na tym samym porcie.
 
