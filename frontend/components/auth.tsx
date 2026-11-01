@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 
 export type User = { id: number; email: string; role: "admin" | "mieszkaniec" };
 type State = { user: User | null; loading: boolean; error: string; setUser: (user: User | null) => void; reload: () => Promise<void> };
@@ -37,7 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => { void reload(); }, []);
-  function updateUser(value: User | null) { setUser(value); setError(""); }
+  const updateUser = useCallback((value: User | null) => { setUser(value); setError(""); }, []);
   return <AuthContext.Provider value={{ user, loading, error, setUser: updateUser, reload }}>{children}</AuthContext.Provider>;
 }
 
