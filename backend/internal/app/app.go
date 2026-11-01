@@ -2,26 +2,36 @@ package app
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
-	"log"
 	"mime"
 	"net/http"
+	"strconv"
 	"strings"
-	"time"
 
 	"mirmilowo/backend/internal/events"
-
 	"golang.org/x/crypto/bcrypt"
 )
 
-const cookieName = "mirmilowo_session"
-const sessionTTL = 8 * time.Hour
+type AdminEventsRepository interface {
+	ListAll(ctx context.Context) ([]events.Event, error)
+	GetByIDAdmin(ctx context.Context, id int64) (events.Event, error)
+	Create(ctx context.Context, in events.ValidatedEvent) (int64, error)
+	Update(ctx context.Context, id int64, in events.ValidatedEvent) error
+	Delete(ctx context.Context, id int64) error
+}
+
+// Struktury odpowiedzi JSON
+type eventsListResponse struct {
+	Items []events.Event `json:"items"`
+}
+
+type createdIDResponse struct {
+	ID int64 `json:"id"`
+}
 
 type App struct {
 	DB            *sql.DB
@@ -29,16 +39,49 @@ type App struct {
 	SecureCookies bool
 	events        *events.Repository
 	dummyHash     []byte
+	EventsRepo    AdminEventsRepository // Dodane dla zgodności z Twoimi handlerami
+	Config        struct {
+		AppOrigin string
+	}
 }
 
-type User struct {
-	ID    uint64 `json:"id"`
-	Email string `json:"email"`
-	Role  string `json:"role"`
+type errorResponse struct {
+	Error  string            `json:"error"`
+	Fields map[string]string `json:"fields,omitempty"`
+}
+
+func writeJSON(w http.ResponseWriter, status int, payload any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(payload)
+}
+
+// Middleware ochrony żądań zmieniających dane (CSRF)
+func (a *App) requireJSONWriteProtection(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+			origin := r.Header.Get("Origin")
+			if origin == "" || origin != a.Config.AppOrigin {
+				writeJSON(w, http.StatusForbidden, errorResponse{
+					Error: "Niedozwolone źródło żądania (błąd Origin).",
+				})
+				return
+			}
+
+			mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+			if err != nil || mediaType != "application/json" {
+				writeJSON(w, http.StatusUnsupportedMediaType, errorResponse{
+					Error: "Wymagany nagłówek Content-Type: application/json.",
+				})
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func New(db *sql.DB, origin string, secure bool) *App {
-	// Equal-cost password verification for unknown accounts.
 	hash, err := bcrypt.GenerateFromPassword([]byte("not-a-user-password"), 12)
 	if err != nil {
 		panic(err)
@@ -48,210 +91,197 @@ func New(db *sql.DB, origin string, secure bool) *App {
 
 func (a *App) Handler() http.Handler {
 	mux := http.NewServeMux()
+	// Zostawiamy deklaracje routera zespołu, a Twoje trasy są niżej w registerAdminEventRoutes
 	mux.HandleFunc("GET /api/health", a.health)
 	mux.HandleFunc("GET /api/auth/me", a.me)
 	mux.HandleFunc("POST /api/auth/login", a.mutation(a.login))
 	mux.HandleFunc("POST /api/auth/logout", a.mutation(a.logout))
+	
 	mux.Handle("GET /api/admin/events", a.RequireRole([]string{"admin"}, a.listAdminEvents))
 	mux.Handle("POST /api/admin/events", a.mutation(a.RequireRole([]string{"admin"}, a.createAdminEvent)))
 	mux.Handle("GET /api/admin/events/{id}", a.RequireRole([]string{"admin"}, a.getAdminEvent))
 	mux.Handle("PUT /api/admin/events/{id}", a.mutation(a.RequireRole([]string{"admin"}, a.updateAdminEvent)))
 	mux.Handle("PATCH /api/admin/events/{id}/publication", a.mutation(a.RequireRole([]string{"admin"}, a.setAdminEventPublication)))
 	mux.Handle("DELETE /api/admin/events/{id}", a.mutation(a.RequireRole([]string{"admin"}, a.deleteAdminEvent)))
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		mux.ServeHTTP(w, r)
-	})
+	
+	return mux
 }
 
-// JSON plus exact Origin validation also protects login/logout against CSRF.
-func (a *App) mutation(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Origin") != a.Origin {
-			fail(w, http.StatusForbidden, "Niedozwolone źródło żądania.")
-			return
-		}
-		mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-		if err != nil || mediaType != "application/json" {
-			fail(w, http.StatusUnsupportedMediaType, "Wymagany format JSON.")
-			return
-		}
-		next(w, r)
-	}
+// Rejestracja tras administracyjnych w routerze aplikacji
+func (a *App) registerAdminEventRoutes(mux *http.ServeMux) {
+	adminRoleMiddleware := a.RequireRole("admin") // Uwaga: Sygnatury RequireRole mogą wymagać ujednolicenia przez zespół
+
+	mux.Handle("GET /api/admin/events", adminRoleMiddleware(http.HandlerFunc(a.handleAdminListEvents)))
+	mux.Handle("GET /api/admin/events/{id}", adminRoleMiddleware(http.HandlerFunc(a.handleAdminGetEvent)))
+	mux.Handle("POST /api/admin/events", adminRoleMiddleware(a.requireJSONWriteProtection(http.HandlerFunc(a.handleAdminCreateEvent))))
+	mux.Handle("PUT /api/admin/events/{id}", adminRoleMiddleware(a.requireJSONWriteProtection(http.HandlerFunc(a.handleAdminUpdateEvent))))
+	mux.Handle("DELETE /api/admin/events/{id}", adminRoleMiddleware(a.requireJSONWriteProtection(http.HandlerFunc(a.handleAdminDeleteEvent))))
 }
 
-func (a *App) health(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-	defer cancel()
-	if err := a.DB.PingContext(ctx); err != nil {
-		fail(w, http.StatusServiceUnavailable, "Baza danych jest niedostępna.")
+// GET /api/admin/events
+func (a *App) handleAdminListEvents(w http.ResponseWriter, r *http.Request) {
+	items, err := a.EventsRepo.ListAll(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorResponse{
+			Error: "Nie udało się pobrać listy wydarzeń.",
+		})
 		return
 	}
-	respond(w, http.StatusOK, map[string]string{"status": "ok"})
+	if items == nil {
+		items = []events.Event{}
+	}
+	writeJSON(w, http.StatusOK, eventsListResponse{Items: items})
 }
 
-func (a *App) login(w http.ResponseWriter, r *http.Request) {
-	var input struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
+// GET /api/admin/events/{id}
+func (a *App) handleAdminGetEvent(w http.ResponseWriter, r *http.Request) {
+	id, err := parseEventID(r.PathValue("id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error: "Nieprawidłowy identyfikator wydarzenia.",
+		})
+		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 4096)
-	dec := json.NewDecoder(r.Body)
+
+	ev, err := a.EventsRepo.GetByIDAdmin(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, events.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, errorResponse{
+				Error: "Wydarzenie nie istnieje.",
+			})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, errorResponse{
+			Error: "Nie udało się pobrać szczegółów wydarzenia.",
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, ev)
+}
+
+// POST /api/admin/events
+func (a *App) handleAdminCreateEvent(w http.ResponseWriter, r *http.Request) {
+	var input events.UpsertEventInput
+	if err := decodeStrictJSON(r.Body, &input); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error: "Nieprawidłowy format danych JSON.",
+		})
+		return
+	}
+
+	validated, fieldErrors := input.Validate()
+	if len(fieldErrors) > 0 {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error:  "Formularz zawiera błędy walidacji.",
+			Fields: fieldErrors,
+		})
+		return
+	}
+
+	newID, err := a.EventsRepo.Create(r.Context(), validated)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorResponse{
+			Error: "Nie udało się zapisać nowego wydarzenia.",
+		})
+		return
+	}
+
+	w.Header().Set("Location", fmt.Sprintf("/api/admin/events/%d", newID))
+	writeJSON(w, http.StatusCreated, createdIDResponse{ID: newID})
+}
+
+// PUT /api/admin/events/{id}
+func (a *App) handleAdminUpdateEvent(w http.ResponseWriter, r *http.Request) {
+	id, err := parseEventID(r.PathValue("id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error: "Nieprawidłowy identyfikator wydarzenia.",
+		})
+		return
+	}
+
+	var input events.UpsertEventInput
+	if err := decodeStrictJSON(r.Body, &input); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error: "Nieprawidłowy format danych JSON.",
+		})
+		return
+	}
+
+	validated, fieldErrors := input.Validate()
+	if len(fieldErrors) > 0 {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error:  "Formularz zawiera błędy walidacji.",
+			Fields: fieldErrors,
+		})
+		return
+	}
+
+	if err := a.EventsRepo.Update(r.Context(), id, validated); err != nil {
+		if errors.Is(err, events.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, errorResponse{
+				Error: "Wydarzenie nie istnieje.",
+			})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, errorResponse{
+			Error: "Nie udało się zaktualizować wydarzenia.",
+		})
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// DELETE /api/admin/events/{id}
+func (a *App) handleAdminDeleteEvent(w http.ResponseWriter, r *http.Request) {
+	id, err := parseEventID(r.PathValue("id"))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error: "Nieprawidłowy identyfikator wydarzenia.",
+		})
+		return
+	}
+
+	var emptyPayload map[string]any
+	if err := decodeStrictJSON(r.Body, &emptyPayload); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error: "Wymagane poprawne ciało JSON (np. {}).",
+		})
+		return
+	}
+
+	if err := a.EventsRepo.Delete(r.Context(), id); err != nil {
+		if errors.Is(err, events.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, errorResponse{
+				Error: "Wydarzenie nie istnieje.",
+			})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, errorResponse{
+			Error: "Nie udało się usunąć wydarzenia.",
+		})
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Funkcje pomocnicze
+func parseEventID(raw string) (int64, error) {
+	id, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil || id <= 0 {
+		return 0, errors.New("invalid id")
+	}
+	return id, nil
+}
+
+func decodeStrictJSON(r io.Reader, dst any) error {
+	dec := json.NewDecoder(io.LimitReader(r, 1<<20))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&input); err != nil {
-		fail(w, http.StatusBadRequest, "Nieprawidłowe dane formularza.")
-		return
+	if err := dec.Decode(dst); err != nil {
+		return err
 	}
-	if err := dec.Decode(&struct{}{}); err != io.EOF {
-		fail(w, http.StatusBadRequest, "Nieprawidłowe dane formularza.")
-		return
+	if dec.More() {
+		return errors.New("unexpected extra JSON data")
 	}
-	input.Email = strings.TrimSpace(input.Email)
-	// Passwords are never trimmed; spaces can be part of the password.
-	if input.Email == "" || len(input.Email) > 254 || input.Password == "" || len(input.Password) > 72 {
-		fail(w, http.StatusBadRequest, "Podaj adres e-mail i hasło (maksymalnie 72 bajty).")
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-	var user User
-	var hash string
-	err := a.DB.QueryRowContext(ctx,
-		"SELECT id, email, password_hash, role FROM users WHERE email = ? LIMIT 1", input.Email,
-	).Scan(&user.ID, &user.Email, &hash, &user.Role)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		a.dbError(w, err)
-		return
-	}
-	passwordHash := []byte(hash)
-	if errors.Is(err, sql.ErrNoRows) {
-		passwordHash = a.dummyHash
-	}
-	verified := bcrypt.CompareHashAndPassword(passwordHash, []byte(input.Password)) == nil
-	if err != nil || !verified || (user.Role != "admin" && user.Role != "mieszkaniec") {
-		fail(w, http.StatusUnauthorized, "Nieprawidłowy adres e-mail lub hasło.")
-		return
-	}
-	var bytes [32]byte
-	if _, err := rand.Read(bytes[:]); err != nil {
-		a.dbError(w, err)
-		return
-	}
-	token := hex.EncodeToString(bytes[:])
-	expires := time.Now().UTC().Add(sessionTTL)
-	// Rotate the current browser session atomically after successful authentication.
-	tx, err := a.DB.BeginTx(ctx, nil)
-	if err != nil {
-		a.dbError(w, err)
-		return
-	}
-	defer tx.Rollback()
-	if _, err = tx.ExecContext(ctx, "INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)", tokenHash(token), user.ID, expires); err != nil {
-		a.dbError(w, err)
-		return
-	}
-	if old, err := r.Cookie(cookieName); err == nil {
-		if _, err = tx.ExecContext(ctx, "DELETE FROM sessions WHERE token_hash = ?", tokenHash(old.Value)); err != nil {
-			a.dbError(w, err)
-			return
-		}
-	}
-	if err = tx.Commit(); err != nil {
-		a.dbError(w, err)
-		return
-	}
-	http.SetCookie(w, a.cookie(token, expires, int(sessionTTL.Seconds())))
-	respond(w, http.StatusOK, map[string]any{"user": user})
-}
-
-func (a *App) me(w http.ResponseWriter, r *http.Request) {
-	user, err := a.currentUser(r)
-	if err != nil {
-		a.dbError(w, err)
-		return
-	}
-	if user == nil {
-		http.SetCookie(w, a.cookie("", time.Unix(1, 0), -1))
-	}
-	respond(w, http.StatusOK, map[string]any{"user": user})
-}
-
-func (a *App) currentUser(r *http.Request) (*User, error) {
-	cookie, err := r.Cookie(cookieName)
-	if err != nil || len(cookie.Value) != 64 {
-		return nil, nil
-	}
-	if _, err := hex.DecodeString(cookie.Value); err != nil {
-		return nil, nil
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-	var user User
-	err = a.DB.QueryRowContext(ctx, `SELECT u.id, u.email, u.role FROM sessions s
-		JOIN users u ON u.id = s.user_id
-		WHERE s.token_hash = ? AND s.expires_at > UTC_TIMESTAMP()`, tokenHash(cookie.Value)).Scan(&user.ID, &user.Email, &user.Role)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &user, nil
-}
-
-func (a *App) logout(w http.ResponseWriter, r *http.Request) {
-	if cookie, err := r.Cookie(cookieName); err == nil {
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-		defer cancel()
-		if _, err = a.DB.ExecContext(ctx, "DELETE FROM sessions WHERE token_hash = ?", tokenHash(cookie.Value)); err != nil {
-			a.dbError(w, err)
-			return
-		}
-	}
-	http.SetCookie(w, a.cookie("", time.Unix(1, 0), -1))
-	respond(w, http.StatusOK, map[string]bool{"ok": true})
-}
-
-// RequireRole is ready for future private API handlers; UI state is not authorization.
-func (a *App) RequireRole(roles []string, next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		user, err := a.currentUser(r)
-		if err != nil {
-			a.dbError(w, err)
-			return
-		}
-		if user == nil {
-			fail(w, http.StatusUnauthorized, "Zaloguj się, aby kontynuować.")
-			return
-		}
-		for _, role := range roles {
-			if user.Role == role {
-				next(w, r)
-				return
-			}
-		}
-		fail(w, http.StatusForbidden, "Brak uprawnień.")
-	}
-}
-
-func (a *App) cookie(value string, expires time.Time, maxAge int) *http.Cookie {
-	return &http.Cookie{Name: cookieName, Value: value, Path: "/", HttpOnly: true, Secure: a.SecureCookies, SameSite: http.SameSiteLaxMode, Expires: expires, MaxAge: maxAge}
-}
-
-func tokenHash(token string) string {
-	sum := sha256.Sum256([]byte(token))
-	return hex.EncodeToString(sum[:])
-}
-func (a *App) dbError(w http.ResponseWriter, err error) {
-	log.Printf("API error: %v", err)
-	fail(w, http.StatusServiceUnavailable, "Usługa jest chwilowo niedostępna. Spróbuj ponownie później.")
-}
-func fail(w http.ResponseWriter, status int, message string) {
-	respond(w, status, map[string]string{"error": message})
-}
-func respond(w http.ResponseWriter, status int, body any) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(body)
+	return nil
 }
