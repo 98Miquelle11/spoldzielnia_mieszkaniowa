@@ -2,99 +2,117 @@ package events
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
 )
 
+const (
+	MaxTitleLength       = 200
+	MaxLocationLength    = 200
+	MaxDescriptionLength = 5000
+)
+
 var (
-	ErrNotFound     = errors.New("nie znaleziono wydarzenia")
-	ErrInvalidInput = errors.New("nieprawidłowe dane wydarzenia")
+	ErrNotFound = errors.New("event not found")
 )
 
 type Event struct {
-	ID          int64     `json:"id"`
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
-	StartsAt    time.Time `json:"starts_at"`
-	EndsAt      time.Time `json:"ends_at"`
-	Location    string    `json:"location"`
-	IsPublished bool      `json:"is_published"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          int64      `json:"id"`
+	Title       string     `json:"title"`
+	Description string     `json:"description"`
+	Location    string     `json:"location"`
+	StartsAt    time.Time  `json:"starts_at"`
+	EndsAt      *time.Time `json:"ends_at,omitempty"`
+	IsPublished bool       `json:"is_published"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
-type Input struct {
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
-	StartsAt    time.Time `json:"starts_at"`
-	EndsAt      time.Time `json:"ends_at"`
-	Location    string    `json:"location"`
-	IsPublished bool      `json:"is_published"`
+// UpsertEventInput reprezentuje dane przesyłane z formularza admina (POST / PUT).
+type UpsertEventInput struct {
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	Location    string  `json:"location"`
+	StartsAt    string  `json:"starts_at"`
+	EndsAt      *string `json:"ends_at,omitempty"`
+	IsPublished bool    `json:"is_published"`
 }
 
-type Period string
-
-const (
-	Upcoming Period = "upcoming"
-	Past     Period = "past"
-)
-
-type ValidationError struct {
-	Field   string
-	Message string
+// ValidatedEvent przechowuje zwalidowane i sparsowane dane gotowe do zapisu w repozytorium.
+type ValidatedEvent struct {
+	Title       string
+	Description string
+	Location    string
+	StartsAt    time.Time
+	EndsAt      *time.Time
+	IsPublished bool
 }
 
-func (e *ValidationError) Error() string { return fmt.Sprintf("%s: %s", e.Field, e.Message) }
-func (e *ValidationError) Unwrap() error { return ErrInvalidInput }
+// Validate sprawdza wymagane pola, długości tekstów oraz poprawność terminów RFC 3339.
+// Zwraca mapę błędów dla poszczególnych pól formularza.
+func (in UpsertEventInput) Validate() (ValidatedEvent, map[string]string) {
+	fieldErrors := make(map[string]string)
 
-func invalid(field, message string) error { return &ValidationError{Field: field, Message: message} }
+	title := strings.TrimSpace(in.Title)
+	if title == "" {
+		fieldErrors["title"] = "Tytuł wydarzenia jest wymagany."
+	} else if utf8.RuneCountInString(title) > MaxTitleLength {
+		fieldErrors["title"] = "Tytuł nie może przekraczać 200 znaków."
+	}
 
-func normalize(input Input) (Input, error) {
-	input.Title = strings.TrimSpace(input.Title)
-	input.Description = strings.TrimSpace(input.Description)
-	input.Location = strings.TrimSpace(input.Location)
-	for _, field := range []struct {
-		name, value string
-		max         int
-	}{
-		{"title", input.Title, 200}, {"location", input.Location, 255},
-	} {
-		if !utf8.ValidString(field.value) || field.value == "" || utf8.RuneCountInString(field.value) > field.max {
-			return input, invalid(field.name, fmt.Sprintf("wymagany poprawny tekst UTF-8, maksymalnie %d znaków", field.max))
+	description := strings.TrimSpace(in.Description)
+	if description == "" {
+		fieldErrors["description"] = "Opis wydarzenia jest wymagany."
+	} else if utf8.RuneCountInString(description) > MaxDescriptionLength {
+		fieldErrors["description"] = "Opis nie może przekraczać 5000 znaków."
+	}
+
+	location := strings.TrimSpace(in.Location)
+	if location == "" {
+		fieldErrors["location"] = "Miejsce wydarzenia jest wymagane."
+	} else if utf8.RuneCountInString(location) > MaxLocationLength {
+		fieldErrors["location"] = "Miejsce nie może przekraczać 200 znaków."
+	}
+
+	var startsAt time.Time
+	startsAtStr := strings.TrimSpace(in.StartsAt)
+	if startsAtStr == "" {
+		fieldErrors["starts_at"] = "Termin rozpoczęcia jest wymagany."
+	} else {
+		parsedStart, err := time.Parse(time.RFC3339, startsAtStr)
+		if err != nil {
+			fieldErrors["starts_at"] = "Nieprawidłowy format daty rozpoczęcia (wymagany RFC 3339)."
+		} else {
+			startsAt = parsedStart.UTC()
 		}
 	}
-	if !utf8.ValidString(input.Description) || input.Description == "" || len(input.Description) > 65535 {
-		return input, invalid("description", "opis jest wymagany i może mieć maksymalnie 65535 bajtów UTF-8")
-	}
-	if input.StartsAt.IsZero() {
-		return input, invalid("starts_at", "podaj termin rozpoczęcia")
-	}
-	if input.EndsAt.IsZero() {
-		return input, invalid("ends_at", "podaj termin zakończenia")
-	}
-	input.StartsAt = input.StartsAt.UTC()
-	input.EndsAt = input.EndsAt.UTC()
-	for _, field := range []struct {
-		name  string
-		value time.Time
-	}{{"starts_at", input.StartsAt}, {"ends_at", input.EndsAt}} {
-		if field.value.Year() < 1000 || field.value.Year() > 9999 {
-			return input, invalid(field.name, "rok musi mieścić się w zakresie 1000–9999")
+
+	var endsAt *time.Time
+	if in.EndsAt != nil && strings.TrimSpace(*in.EndsAt) != "" {
+		parsedEnd, err := time.Parse(time.RFC3339, strings.TrimSpace(*in.EndsAt))
+		if err != nil {
+			fieldErrors["ends_at"] = "Nieprawidłowy format daty zakończenia (wymagany RFC 3339)."
+		} else {
+			utcEnd := parsedEnd.UTC()
+			if !startsAt.IsZero() && utcEnd.Before(startsAt) {
+				fieldErrors["ends_at"] = "Termin zakończenia nie może być wcześniejszy niż termin rozpoczęcia."
+			} else {
+				endsAt = &utcEnd
+			}
 		}
 	}
-	if input.EndsAt.Before(input.StartsAt) {
-		return input, invalid("ends_at", "zakończenie nie może poprzedzać rozpoczęcia")
-	}
-	input.StartsAt = input.StartsAt.Truncate(time.Second)
-	input.EndsAt = input.EndsAt.Truncate(time.Second)
-	return input, nil
-}
 
-func validateID(id int64) error {
-	if id <= 0 {
-		return invalid("id", "identyfikator musi być dodatni")
+	if len(fieldErrors) > 0 {
+		return ValidatedEvent{}, fieldErrors
 	}
-	return nil
+
+	return ValidatedEvent{
+		Title:       title,
+		Description: description,
+		Location:    location,
+		StartsAt:    startsAt,
+		EndsAt:      endsAt,
+		IsPublished: in.IsPublished,
+	}, nil
 }
