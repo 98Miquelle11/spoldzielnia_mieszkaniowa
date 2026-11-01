@@ -9,11 +9,7 @@ import (
 )
 
 type Repository struct{ db *sql.DB }
-
-// NewRepository reuses the connection pool opened by database.Open.
 func NewRepository(db *sql.DB) *Repository { return &Repository{db: db} }
-
-// These fragments are constants. User input is always passed separately as args.
 const columns = "id, title, description, starts_at, ends_at, location, is_published, created_at, updated_at"
 
 type scanner interface{ Scan(...any) error }
@@ -21,6 +17,12 @@ type scanner interface{ Scan(...any) error }
 func scanEvent(row scanner) (Event, error) {
 	var e Event
 	err := row.Scan(&e.ID, &e.Title, &e.Description, &e.StartsAt, &e.EndsAt, &e.Location, &e.IsPublished, &e.CreatedAt, &e.UpdatedAt)
+	if err == nil {
+		e.StartsAt = e.StartsAt.UTC()
+		e.EndsAt = e.EndsAt.UTC()
+		e.CreatedAt = e.CreatedAt.UTC()
+		e.UpdatedAt = e.UpdatedAt.UTC()
+	}
 	return e, err
 }
 
@@ -62,8 +64,6 @@ func (r *Repository) listPublishedInWindow(ctx context.Context, boundary time.Ti
 	}
 }
 
-// ListPublished includes ongoing events in Upcoming. An archived event has ended.
-// No period/filter value is interpolated into SQL.
 func (r *Repository) ListPublished(ctx context.Context, period Period) ([]Event, error) {
 	now := time.Now().UTC().Truncate(time.Second)
 	switch period {
@@ -72,11 +72,10 @@ func (r *Repository) ListPublished(ctx context.Context, period Period) ([]Event,
 	case Archived:
 		return r.listPublishedInWindow(ctx, now, archivedWindow)
 	default:
-		return nil, invalid("period", "dozwolone wartości: upcoming albo archived")
+		return nil, invalid("period", "dozwolone wartości: upcoming albo past")
 	}
 }
 
-// ListAll is administrative: it also returns hidden events.
 func (r *Repository) ListAll(ctx context.Context) ([]Event, error) {
 	return r.list(ctx, "SELECT "+columns+" FROM cultural_events ORDER BY starts_at DESC, id DESC")
 }
@@ -92,7 +91,6 @@ func (r *Repository) get(ctx context.Context, query string, args ...any) (Event,
 	return e, nil
 }
 
-// GetPublishedByID deliberately treats hidden and missing events identically.
 func (r *Repository) GetPublishedByID(ctx context.Context, id int64) (Event, error) {
 	if err := validateID(id); err != nil {
 		return Event{}, err
@@ -100,7 +98,6 @@ func (r *Repository) GetPublishedByID(ctx context.Context, id int64) (Event, err
 	return r.get(ctx, "SELECT "+columns+" FROM cultural_events WHERE id = ? AND is_published = ?", id, true)
 }
 
-// GetByID is administrative: it may return a hidden event.
 func (r *Repository) GetByID(ctx context.Context, id int64) (Event, error) {
 	if err := validateID(id); err != nil {
 		return Event{}, err
@@ -108,7 +105,6 @@ func (r *Repository) GetByID(ctx context.Context, id int64) (Event, error) {
 	return r.get(ctx, "SELECT "+columns+" FROM cultural_events WHERE id = ?", id)
 }
 
-// Create returns the generated ID. Zero-value IsPublished creates a hidden event.
 func (r *Repository) Create(ctx context.Context, input Input) (int64, error) {
 	input, err := normalize(input)
 	if err != nil {
@@ -127,8 +123,6 @@ func (r *Repository) Create(ctx context.Context, input Input) (int64, error) {
 	return id, nil
 }
 
-// Update locks the existing row so a no-op update is not confused with a missing
-// event. MySQL normally reports changed rows, so RowsAffected()==0 is not enough.
 func (r *Repository) Update(ctx context.Context, id int64, input Input) error {
 	if err := validateID(id); err != nil {
 		return err
@@ -204,4 +198,10 @@ func (r *Repository) Delete(ctx context.Context, id int64) error {
 		return ErrNotFound
 	}
 	return nil
+}
+func (r *Repository) ListPublishedBetween(ctx context.Context, from, to time.Time) ([]Event, error) {
+	if from.IsZero() || to.IsZero() || !from.Before(to) {
+		return nil, invalid("range", "wymagany przedział from < to")
+	}
+	return r.list(ctx, "SELECT "+columns+" FROM cultural_events WHERE is_published = ? AND starts_at < ? AND ends_at >= ? ORDER BY starts_at ASC, id ASC", true, to.UTC(), from.UTC())
 }
