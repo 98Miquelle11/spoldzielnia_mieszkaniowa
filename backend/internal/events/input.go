@@ -11,7 +11,7 @@ type Period string
 
 const (
 	Upcoming Period = "upcoming"
-	Archived Period = "archived"
+	Archived Period = "past"
 )
 
 type Input struct {
@@ -63,11 +63,15 @@ func normalize(input Input) (Input, error) {
 		return Input{}, invalid("ends_at", "jest wymagane")
 	}
 
-	input.StartsAt = input.StartsAt.UTC().Truncate(time.Second)
-	input.EndsAt = input.EndsAt.UTC().Truncate(time.Second)
+	input.StartsAt = input.StartsAt.UTC()
+	input.EndsAt = input.EndsAt.UTC()
+
 	if input.EndsAt.Before(input.StartsAt) {
 		return Input{}, invalid("ends_at", "nie może być wcześniejsze niż starts_at")
 	}
+	
+	input.StartsAt = input.StartsAt.Truncate(time.Second)
+	input.EndsAt = input.EndsAt.Truncate(time.Second)
 
 	return input, nil
 }
