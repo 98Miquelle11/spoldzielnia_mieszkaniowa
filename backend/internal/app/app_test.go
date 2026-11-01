@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"golang.org/x/crypto/bcrypt"
@@ -47,7 +46,6 @@ func request(a *App, method, path, body string, cookie *http.Cookie) *httptest.R
 
 func TestLoginSessionLogout(t *testing.T) {
 	a, mock := setup(t)
-	// Spaces at the ends of a password must be preserved.
 	password := "  my long password  "
 	hash, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MinCost)
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, email, password_hash, role FROM users WHERE email = ? LIMIT 1")).WithArgs("a@example.test").WillReturnRows(sqlmock.NewRows([]string{"id", "email", "password_hash", "role"}).AddRow(1, "a@example.test", string(hash), "admin"))
@@ -190,7 +188,7 @@ func TestAdminEventListRequiresAdmin(t *testing.T) {
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT " + eventsColumnsForTest + " FROM cultural_events ORDER BY starts_at DESC, id DESC")).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "title", "description", "starts_at", "ends_at", "location", "is_published", "created_at", "updated_at"}))
 	w = request(a, "GET", "/api/admin/events", "", adminCookie)
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"events":[]`) {
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"items":[]`) {
 		t.Fatalf("admin event list: %d %s", w.Code, w.Body)
 	}
 }
@@ -207,12 +205,8 @@ func TestAdminCanCreateEvent(t *testing.T) {
 		VALUES (?, ?, ?, ?, ?, ?)`)).
 		WithArgs("Spotkanie", "Opis spotkania", sqlmock.AnyArg(), sqlmock.AnyArg(), "Sala", false).
 		WillReturnResult(sqlmock.NewResult(42, 1))
-	now := time.Now().UTC()
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT " + eventsColumnsForTest + " FROM cultural_events WHERE id = ?")).
-		WithArgs(int64(42)).WillReturnRows(sqlmock.NewRows(strings.Split(eventsColumnsForTest, ", ")).
-		AddRow(42, "Spotkanie", "Opis spotkania", now, now.Add(time.Hour), "Sala", false, now, now))
 	w := request(a, "POST", "/api/admin/events", `{"title":"Spotkanie","description":"Opis spotkania","starts_at":"2026-12-01T10:00:00Z","ends_at":"2026-12-01T11:00:00Z","location":"Sala","is_published":false}`, cookie)
-	if w.Code != http.StatusCreated || !strings.Contains(w.Body.String(), `"id":42`) {
+	if w.Code != http.StatusCreated || !strings.Contains(w.Body.String(), `"id":42`) || w.Header().Get("Location") != "/api/admin/events/42" {
 		t.Fatalf("create event: %d %s", w.Code, w.Body)
 	}
 }
@@ -228,19 +222,21 @@ func TestAdminCanToggleAndDeleteEvent(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT id FROM cultural_events WHERE id = ? FOR UPDATE")).
 		WithArgs(int64(42)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(42))
-	mock.ExpectExec(regexp.QuoteMeta("UPDATE cultural_events SET is_published = ? WHERE id = ?")).
-		WithArgs(true, int64(42)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE cultural_events
+ SET title = ?, description = ?, starts_at = ?, ends_at = ?, location = ?, is_published = ?
+ WHERE id = ?`)).
+		WithArgs("Spotkanie", "Opis", sqlmock.AnyArg(), sqlmock.AnyArg(), "Sala", true, int64(42)).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
-	w := request(a, "PATCH", "/api/admin/events/42/publication", `{"is_published":true}`, cookie)
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"is_published":true`) {
+	w := request(a, "PUT", "/api/admin/events/42", `{"title":"Spotkanie","description":"Opis","location":"Sala","starts_at":"2026-12-01T10:00:00Z","ends_at":"2026-12-01T11:00:00Z","is_published":true}`, cookie)
+	if w.Code != http.StatusNoContent || w.Body.Len() != 0 {
 		t.Fatalf("publish event: %d %s", w.Code, w.Body)
 	}
 
 	expectAdmin()
 	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM cultural_events WHERE id = ?")).
 		WithArgs(int64(42)).WillReturnResult(sqlmock.NewResult(0, 1))
-	w = request(a, "DELETE", "/api/admin/events/42", "", cookie)
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"ok":true`) {
+	w = request(a, "DELETE", "/api/admin/events/42", "{}", cookie)
+	if w.Code != http.StatusNoContent || w.Body.Len() != 0 {
 		t.Fatalf("delete event: %d %s", w.Code, w.Body)
 	}
 }
