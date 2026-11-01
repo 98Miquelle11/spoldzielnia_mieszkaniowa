@@ -96,14 +96,17 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /api/auth/me", a.me)
 	mux.HandleFunc("POST /api/auth/login", a.mutation(a.login))
 	mux.HandleFunc("POST /api/auth/logout", a.mutation(a.logout))
-	
+
+	mux.HandleFunc("GET /api/events", a.listPublishedEvents)
+	mux.HandleFunc("GET /api/events/{id}", a.getPublishedEvent)
+
 	mux.Handle("GET /api/admin/events", a.RequireRole([]string{"admin"}, a.listAdminEvents))
 	mux.Handle("POST /api/admin/events", a.mutation(a.RequireRole([]string{"admin"}, a.createAdminEvent)))
 	mux.Handle("GET /api/admin/events/{id}", a.RequireRole([]string{"admin"}, a.getAdminEvent))
 	mux.Handle("PUT /api/admin/events/{id}", a.mutation(a.RequireRole([]string{"admin"}, a.updateAdminEvent)))
 	mux.Handle("PATCH /api/admin/events/{id}/publication", a.mutation(a.RequireRole([]string{"admin"}, a.setAdminEventPublication)))
 	mux.Handle("DELETE /api/admin/events/{id}", a.mutation(a.RequireRole([]string{"admin"}, a.deleteAdminEvent)))
-	
+
 	return mux
 }
 

@@ -14,7 +14,8 @@ const (
 )
 
 var (
-	ErrNotFound = errors.New("event not found")
+	ErrNotFound     = errors.New("event not found")
+	ErrInvalidInput = errors.New("invalid event input")
 )
 
 type Event struct {

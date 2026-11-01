@@ -44,17 +44,35 @@ func (r *Repository) list(ctx context.Context, query string, args ...any) ([]Eve
 	return result, nil
 }
 
-// ListPublished includes ongoing events in Upcoming. A past event has ended.
+type publishedWindow int
+
+const (
+	upcomingWindow publishedWindow = iota
+	archivedWindow
+)
+
+func (r *Repository) listPublishedInWindow(ctx context.Context, boundary time.Time, window publishedWindow) ([]Event, error) {
+	switch window {
+	case upcomingWindow:
+		return r.list(ctx, "SELECT "+columns+" FROM cultural_events WHERE is_published = ? AND ends_at >= ? ORDER BY starts_at ASC, id ASC", true, boundary)
+	case archivedWindow:
+		return r.list(ctx, "SELECT "+columns+" FROM cultural_events WHERE is_published = ? AND ends_at < ? ORDER BY ends_at DESC, id DESC", true, boundary)
+	default:
+		return nil, invalid("period", "nieobsługiwane okno czasu")
+	}
+}
+
+// ListPublished includes ongoing events in Upcoming. An archived event has ended.
 // No period/filter value is interpolated into SQL.
 func (r *Repository) ListPublished(ctx context.Context, period Period) ([]Event, error) {
 	now := time.Now().UTC().Truncate(time.Second)
 	switch period {
 	case "", Upcoming:
-		return r.list(ctx, "SELECT "+columns+" FROM cultural_events WHERE is_published = ? AND ends_at >= ? ORDER BY starts_at ASC, id ASC", true, now)
-	case Past:
-		return r.list(ctx, "SELECT "+columns+" FROM cultural_events WHERE is_published = ? AND ends_at < ? ORDER BY ends_at DESC, id DESC", true, now)
+		return r.listPublishedInWindow(ctx, now, upcomingWindow)
+	case Archived:
+		return r.listPublishedInWindow(ctx, now, archivedWindow)
 	default:
-		return nil, invalid("period", "dozwolone wartości: upcoming albo past")
+		return nil, invalid("period", "dozwolone wartości: upcoming albo archived")
 	}
 }
 
