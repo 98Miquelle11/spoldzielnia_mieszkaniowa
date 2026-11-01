@@ -1,37 +1,18 @@
 package app
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
+	"log"
 	"mime"
 	"net/http"
 	"strconv"
-	"strings"
 
-	"mirmilowo/backend/internal/events"
 	"golang.org/x/crypto/bcrypt"
+	"mirmilowo/backend/internal/events"
 )
-
-type AdminEventsRepository interface {
-	ListAll(ctx context.Context) ([]events.Event, error)
-	GetByIDAdmin(ctx context.Context, id int64) (events.Event, error)
-	Create(ctx context.Context, in events.ValidatedEvent) (int64, error)
-	Update(ctx context.Context, id int64, in events.ValidatedEvent) error
-	Delete(ctx context.Context, id int64) error
-}
-
-// Struktury odpowiedzi JSON
-type eventsListResponse struct {
-	Items []events.Event `json:"items"`
-}
-
-type createdIDResponse struct {
-	ID int64 `json:"id"`
-}
 
 type App struct {
 	DB            *sql.DB
@@ -39,10 +20,6 @@ type App struct {
 	SecureCookies bool
 	events        *events.Repository
 	dummyHash     []byte
-	EventsRepo    AdminEventsRepository // Dodane dla zgodności z Twoimi handlerami
-	Config        struct {
-		AppOrigin string
-	}
 }
 
 type errorResponse struct {
@@ -52,35 +29,17 @@ type errorResponse struct {
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
 }
-
-// Middleware ochrony żądań zmieniających dane (CSRF)
-func (a *App) requireJSONWriteProtection(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
-			origin := r.Header.Get("Origin")
-			if origin == "" || origin != a.Config.AppOrigin {
-				writeJSON(w, http.StatusForbidden, errorResponse{
-					Error: "Niedozwolone źródło żądania (błąd Origin).",
-				})
-				return
-			}
-
-			mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-			if err != nil || mediaType != "application/json" {
-				writeJSON(w, http.StatusUnsupportedMediaType, errorResponse{
-					Error: "Wymagany nagłówek Content-Type: application/json.",
-				})
-				return
-			}
-		}
-		next.ServeHTTP(w, r)
-	})
+func fail(w http.ResponseWriter, status int, message string) {
+	writeJSON(w, status, errorResponse{Error: message})
 }
-
+func (a *App) dbError(w http.ResponseWriter, err error) {
+	log.Printf("database error: %v", err)
+	fail(w, http.StatusServiceUnavailable, "Baza danych jest chwilowo niedostępna.")
+}
 func New(db *sql.DB, origin string, secure bool) *App {
 	hash, err := bcrypt.GenerateFromPassword([]byte("not-a-user-password"), 12)
 	if err != nil {
@@ -88,203 +47,58 @@ func New(db *sql.DB, origin string, secure bool) *App {
 	}
 	return &App{DB: db, Origin: origin, SecureCookies: secure, events: events.NewRepository(db), dummyHash: hash}
 }
-
 func (a *App) Handler() http.Handler {
 	mux := http.NewServeMux()
-	// Zostawiamy deklaracje routera zespołu, a Twoje trasy są niżej w registerAdminEventRoutes
 	mux.HandleFunc("GET /api/health", a.health)
 	mux.HandleFunc("GET /api/auth/me", a.me)
 	mux.HandleFunc("POST /api/auth/login", a.mutation(a.login))
 	mux.HandleFunc("POST /api/auth/logout", a.mutation(a.logout))
-
 	mux.HandleFunc("GET /api/events", a.listPublishedEvents)
 	mux.HandleFunc("GET /api/events/{id}", a.getPublishedEvent)
-
-	mux.Handle("GET /api/admin/events", a.RequireRole([]string{"admin"}, a.listAdminEvents))
-	mux.Handle("POST /api/admin/events", a.mutation(a.RequireRole([]string{"admin"}, a.createAdminEvent)))
-	mux.Handle("GET /api/admin/events/{id}", a.RequireRole([]string{"admin"}, a.getAdminEvent))
-	mux.Handle("PUT /api/admin/events/{id}", a.mutation(a.RequireRole([]string{"admin"}, a.updateAdminEvent)))
-	mux.Handle("PATCH /api/admin/events/{id}/publication", a.mutation(a.RequireRole([]string{"admin"}, a.setAdminEventPublication)))
-	mux.Handle("DELETE /api/admin/events/{id}", a.mutation(a.RequireRole([]string{"admin"}, a.deleteAdminEvent)))
-
+	mux.HandleFunc("GET /api/admin/events", a.RequireRole([]string{"admin"}, a.listAdminEvents))
+	mux.HandleFunc("GET /api/admin/events/{id}", a.RequireRole([]string{"admin"}, a.getAdminEvent))
+	mux.HandleFunc("POST /api/admin/events", a.mutation(a.RequireRole([]string{"admin"}, a.createAdminEvent)))
+	mux.HandleFunc("PUT /api/admin/events/{id}", a.mutation(a.RequireRole([]string{"admin"}, a.updateAdminEvent)))
+	mux.HandleFunc("DELETE /api/admin/events/{id}", a.mutation(a.RequireRole([]string{"admin"}, a.deleteAdminEvent)))
 	return mux
 }
-
-// Rejestracja tras administracyjnych w routerze aplikacji
-func (a *App) registerAdminEventRoutes(mux *http.ServeMux) {
-	adminRoleMiddleware := a.RequireRole("admin") // Uwaga: Sygnatury RequireRole mogą wymagać ujednolicenia przez zespół
-
-	mux.Handle("GET /api/admin/events", adminRoleMiddleware(http.HandlerFunc(a.handleAdminListEvents)))
-	mux.Handle("GET /api/admin/events/{id}", adminRoleMiddleware(http.HandlerFunc(a.handleAdminGetEvent)))
-	mux.Handle("POST /api/admin/events", adminRoleMiddleware(a.requireJSONWriteProtection(http.HandlerFunc(a.handleAdminCreateEvent))))
-	mux.Handle("PUT /api/admin/events/{id}", adminRoleMiddleware(a.requireJSONWriteProtection(http.HandlerFunc(a.handleAdminUpdateEvent))))
-	mux.Handle("DELETE /api/admin/events/{id}", adminRoleMiddleware(a.requireJSONWriteProtection(http.HandlerFunc(a.handleAdminDeleteEvent))))
-}
-
-// GET /api/admin/events
-func (a *App) handleAdminListEvents(w http.ResponseWriter, r *http.Request) {
-	items, err := a.EventsRepo.ListAll(r.Context())
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorResponse{
-			Error: "Nie udało się pobrać listy wydarzeń.",
-		})
-		return
-	}
-	if items == nil {
-		items = []events.Event{}
-	}
-	writeJSON(w, http.StatusOK, eventsListResponse{Items: items})
-}
-
-// GET /api/admin/events/{id}
-func (a *App) handleAdminGetEvent(w http.ResponseWriter, r *http.Request) {
-	id, err := parseEventID(r.PathValue("id"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{
-			Error: "Nieprawidłowy identyfikator wydarzenia.",
-		})
-		return
-	}
-
-	ev, err := a.EventsRepo.GetByIDAdmin(r.Context(), id)
-	if err != nil {
-		if errors.Is(err, events.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, errorResponse{
-				Error: "Wydarzenie nie istnieje.",
-			})
+func (a *App) mutation(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Origin") != a.Origin || a.Origin == "" {
+			fail(w, 403, "Niedozwolone źródło żądania.")
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, errorResponse{
-			Error: "Nie udało się pobrać szczegółów wydarzenia.",
-		})
-		return
-	}
-	writeJSON(w, http.StatusOK, ev)
-}
-
-// POST /api/admin/events
-func (a *App) handleAdminCreateEvent(w http.ResponseWriter, r *http.Request) {
-	var input events.UpsertEventInput
-	if err := decodeStrictJSON(r.Body, &input); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{
-			Error: "Nieprawidłowy format danych JSON.",
-		})
-		return
-	}
-
-	validated, fieldErrors := input.Validate()
-	if len(fieldErrors) > 0 {
-		writeJSON(w, http.StatusBadRequest, errorResponse{
-			Error:  "Formularz zawiera błędy walidacji.",
-			Fields: fieldErrors,
-		})
-		return
-	}
-
-	newID, err := a.EventsRepo.Create(r.Context(), validated)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorResponse{
-			Error: "Nie udało się zapisać nowego wydarzenia.",
-		})
-		return
-	}
-
-	w.Header().Set("Location", fmt.Sprintf("/api/admin/events/%d", newID))
-	writeJSON(w, http.StatusCreated, createdIDResponse{ID: newID})
-}
-
-// PUT /api/admin/events/{id}
-func (a *App) handleAdminUpdateEvent(w http.ResponseWriter, r *http.Request) {
-	id, err := parseEventID(r.PathValue("id"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{
-			Error: "Nieprawidłowy identyfikator wydarzenia.",
-		})
-		return
-	}
-
-	var input events.UpsertEventInput
-	if err := decodeStrictJSON(r.Body, &input); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{
-			Error: "Nieprawidłowy format danych JSON.",
-		})
-		return
-	}
-
-	validated, fieldErrors := input.Validate()
-	if len(fieldErrors) > 0 {
-		writeJSON(w, http.StatusBadRequest, errorResponse{
-			Error:  "Formularz zawiera błędy walidacji.",
-			Fields: fieldErrors,
-		})
-		return
-	}
-
-	if err := a.EventsRepo.Update(r.Context(), id, validated); err != nil {
-		if errors.Is(err, events.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, errorResponse{
-				Error: "Wydarzenie nie istnieje.",
-			})
+		mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		if err != nil || mediaType != "application/json" {
+			fail(w, 415, "Wymagany Content-Type: application/json.")
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, errorResponse{
-			Error: "Nie udało się zaktualizować wydarzenia.",
-		})
-		return
+		next(w, r)
 	}
-	w.WriteHeader(http.StatusNoContent)
 }
-
-// DELETE /api/admin/events/{id}
-func (a *App) handleAdminDeleteEvent(w http.ResponseWriter, r *http.Request) {
-	id, err := parseEventID(r.PathValue("id"))
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{
-			Error: "Nieprawidłowy identyfikator wydarzenia.",
-		})
-		return
-	}
-
-	var emptyPayload map[string]any
-	if err := decodeStrictJSON(r.Body, &emptyPayload); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{
-			Error: "Wymagane poprawne ciało JSON (np. {}).",
-		})
-		return
-	}
-
-	if err := a.EventsRepo.Delete(r.Context(), id); err != nil {
-		if errors.Is(err, events.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, errorResponse{
-				Error: "Wydarzenie nie istnieje.",
-			})
-			return
-		}
-		writeJSON(w, http.StatusInternalServerError, errorResponse{
-			Error: "Nie udało się usunąć wydarzenia.",
-		})
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// Funkcje pomocnicze
 func parseEventID(raw string) (int64, error) {
-	id, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	for _, ch := range raw {
+		if ch < '0' || ch > '9' {
+			return 0, errors.New("invalid id")
+		}
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil || id <= 0 {
 		return 0, errors.New("invalid id")
 	}
 	return id, nil
 }
-
 func decodeStrictJSON(r io.Reader, dst any) error {
-	dec := json.NewDecoder(io.LimitReader(r, 1<<20))
+	dec := json.NewDecoder(r)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
 		return err
 	}
-	if dec.More() {
-		return errors.New("unexpected extra JSON data")
+	if err := dec.Decode(new(any)); err != io.EOF {
+		return errors.New("expected one JSON value")
 	}
 	return nil
+}
+func (a *App) health(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, map[string]bool{"ok": true})
 }
