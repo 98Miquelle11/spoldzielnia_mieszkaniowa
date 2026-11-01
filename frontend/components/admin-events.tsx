@@ -267,7 +267,7 @@ function validateDraft(draft: Draft): FieldErrors {
 }
 
 export function AdminEvents() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, setUser } = useAuth();
 
   const [events, setEvents] = useState<CulturalEvent[]>([]);
 
@@ -361,9 +361,10 @@ export function AdminEvents() {
 
       if (error instanceof ApiError && error.status === 401) {
         setNeedsLogin(true);
+        setUser(null);
       }
     }
-  }, []);
+  }, [setUser]);
 
   useEffect(() => {
     if (!authLoading && user?.role === "admin") {
@@ -386,6 +387,7 @@ export function AdminEvents() {
 
     if (error instanceof ApiError && error.status === 401) {
       setNeedsLogin(true);
+        setUser(null);
     }
   }
 
