@@ -11,7 +11,7 @@ import (
 )
 
 func (a *App) listPublishedEvents(w http.ResponseWriter, r *http.Request) {
-	period := events.Period(strings.TrimSpace(r.URL.Query().Get("filter")))
+	period := events.Period(strings.TrimSpace(r.URL.Query().Get("period")))
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
@@ -29,7 +29,7 @@ func (a *App) listPublishedEvents(w http.ResponseWriter, r *http.Request) {
 		items = []events.Event{}
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"events": items})
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
 func (a *App) getPublishedEvent(w http.ResponseWriter, r *http.Request) {
@@ -52,5 +52,5 @@ func (a *App) getPublishedEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"event": event})
+	writeJSON(w, http.StatusOK, event)
 }
