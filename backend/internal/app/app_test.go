@@ -9,9 +9,11 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"golang.org/x/crypto/bcrypt"
+	"mirmilowo/backend/internal/events"
 )
 
 func setup(t *testing.T) (*App, sqlmock.Sqlmock) {
@@ -21,7 +23,7 @@ func setup(t *testing.T) (*App, sqlmock.Sqlmock) {
 		t.Fatal(err)
 	}
 	hash, _ := bcrypt.GenerateFromPassword([]byte("test password"), bcrypt.MinCost)
-	a := &App{DB: db, Origin: "http://localhost:3000", SecureCookies: true, dummyHash: hash}
+	a := &App{DB: db, Origin: "http://localhost:3000", SecureCookies: true, events: events.NewRepository(db), dummyHash: hash}
 	t.Cleanup(func() {
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Error(err)
@@ -169,5 +171,88 @@ func TestRoleAuthorization(t *testing.T) {
 				t.Fatalf("role %q: got %d want %d", role, w.Code, want)
 			}
 		})
+	}
+}
+
+func TestAdminEventListRequiresAdmin(t *testing.T) {
+	a, mock := setup(t)
+	cookie := &http.Cookie{Name: cookieName, Value: strings.Repeat("c", 64)}
+	mock.ExpectQuery("SELECT u.id.*FROM sessions s.*JOIN users u").WithArgs(tokenHash(cookie.Value)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "role"}).AddRow(2, "resident@example.test", "mieszkaniec"))
+	w := request(a, "GET", "/api/admin/events", "", cookie)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("resident accessed admin events: %d %s", w.Code, w.Body)
+	}
+
+	adminCookie := &http.Cookie{Name: cookieName, Value: strings.Repeat("d", 64)}
+	mock.ExpectQuery("SELECT u.id.*FROM sessions s.*JOIN users u").WithArgs(tokenHash(adminCookie.Value)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "role"}).AddRow(1, "admin@example.test", "admin"))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT " + eventsColumnsForTest + " FROM cultural_events ORDER BY starts_at DESC, id DESC")).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "title", "description", "starts_at", "ends_at", "location", "is_published", "created_at", "updated_at"}))
+	w = request(a, "GET", "/api/admin/events", "", adminCookie)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"events":[]`) {
+		t.Fatalf("admin event list: %d %s", w.Code, w.Body)
+	}
+}
+
+const eventsColumnsForTest = "id, title, description, starts_at, ends_at, location, is_published, created_at, updated_at"
+
+func TestAdminCanCreateEvent(t *testing.T) {
+	a, mock := setup(t)
+	cookie := &http.Cookie{Name: cookieName, Value: strings.Repeat("e", 64)}
+	mock.ExpectQuery("SELECT u.id.*FROM sessions s.*JOIN users u").WithArgs(tokenHash(cookie.Value)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "role"}).AddRow(1, "admin@example.test", "admin"))
+	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO cultural_events
+		(title, description, starts_at, ends_at, location, is_published)
+		VALUES (?, ?, ?, ?, ?, ?)`)).
+		WithArgs("Spotkanie", "Opis spotkania", sqlmock.AnyArg(), sqlmock.AnyArg(), "Sala", false).
+		WillReturnResult(sqlmock.NewResult(42, 1))
+	now := time.Now().UTC()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT " + eventsColumnsForTest + " FROM cultural_events WHERE id = ?")).
+		WithArgs(int64(42)).WillReturnRows(sqlmock.NewRows(strings.Split(eventsColumnsForTest, ", ")).
+		AddRow(42, "Spotkanie", "Opis spotkania", now, now.Add(time.Hour), "Sala", false, now, now))
+	w := request(a, "POST", "/api/admin/events", `{"title":"Spotkanie","description":"Opis spotkania","starts_at":"2026-12-01T10:00:00Z","ends_at":"2026-12-01T11:00:00Z","location":"Sala","is_published":false}`, cookie)
+	if w.Code != http.StatusCreated || !strings.Contains(w.Body.String(), `"id":42`) {
+		t.Fatalf("create event: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestAdminCanToggleAndDeleteEvent(t *testing.T) {
+	a, mock := setup(t)
+	cookie := &http.Cookie{Name: cookieName, Value: strings.Repeat("f", 64)}
+	expectAdmin := func() {
+		mock.ExpectQuery("SELECT u.id.*FROM sessions s.*JOIN users u").WithArgs(tokenHash(cookie.Value)).
+			WillReturnRows(sqlmock.NewRows([]string{"id", "email", "role"}).AddRow(1, "admin@example.test", "admin"))
+	}
+	expectAdmin()
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id FROM cultural_events WHERE id = ? FOR UPDATE")).
+		WithArgs(int64(42)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(42))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE cultural_events SET is_published = ? WHERE id = ?")).
+		WithArgs(true, int64(42)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	w := request(a, "PATCH", "/api/admin/events/42/publication", `{"is_published":true}`, cookie)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"is_published":true`) {
+		t.Fatalf("publish event: %d %s", w.Code, w.Body)
+	}
+
+	expectAdmin()
+	mock.ExpectExec(regexp.QuoteMeta("DELETE FROM cultural_events WHERE id = ?")).
+		WithArgs(int64(42)).WillReturnResult(sqlmock.NewResult(0, 1))
+	w = request(a, "DELETE", "/api/admin/events/42", "", cookie)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"ok":true`) {
+		t.Fatalf("delete event: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestAdminEventMutationChecksOrigin(t *testing.T) {
+	a, _ := setup(t)
+	r := httptest.NewRequest("POST", "/api/admin/events", strings.NewReader(`{}`))
+	r.Header.Set("Origin", "https://attacker.example")
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	a.Handler().ServeHTTP(w, r)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("foreign origin accepted: %d %s", w.Code, w.Body)
 	}
 }

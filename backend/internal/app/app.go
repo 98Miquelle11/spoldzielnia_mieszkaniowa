@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"mirmilowo/backend/internal/events"
+
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -25,6 +27,7 @@ type App struct {
 	DB            *sql.DB
 	Origin        string
 	SecureCookies bool
+	events        *events.Repository
 	dummyHash     []byte
 }
 
@@ -40,7 +43,7 @@ func New(db *sql.DB, origin string, secure bool) *App {
 	if err != nil {
 		panic(err)
 	}
-	return &App{DB: db, Origin: origin, SecureCookies: secure, dummyHash: hash}
+	return &App{DB: db, Origin: origin, SecureCookies: secure, events: events.NewRepository(db), dummyHash: hash}
 }
 
 func (a *App) Handler() http.Handler {
@@ -49,6 +52,12 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /api/auth/me", a.me)
 	mux.HandleFunc("POST /api/auth/login", a.mutation(a.login))
 	mux.HandleFunc("POST /api/auth/logout", a.mutation(a.logout))
+	mux.Handle("GET /api/admin/events", a.RequireRole([]string{"admin"}, a.listAdminEvents))
+	mux.Handle("POST /api/admin/events", a.mutation(a.RequireRole([]string{"admin"}, a.createAdminEvent)))
+	mux.Handle("GET /api/admin/events/{id}", a.RequireRole([]string{"admin"}, a.getAdminEvent))
+	mux.Handle("PUT /api/admin/events/{id}", a.mutation(a.RequireRole([]string{"admin"}, a.updateAdminEvent)))
+	mux.Handle("PATCH /api/admin/events/{id}/publication", a.mutation(a.RequireRole([]string{"admin"}, a.setAdminEventPublication)))
+	mux.Handle("DELETE /api/admin/events/{id}", a.mutation(a.RequireRole([]string{"admin"}, a.deleteAdminEvent)))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")

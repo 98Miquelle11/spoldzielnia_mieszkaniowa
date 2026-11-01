@@ -13,6 +13,10 @@ body { background: #fbfcfb; color: #1f2a26; }
 .card { border-radius: 1rem; }
 .placeholder-card { background: white; border: 1px solid #e7ebe8; border-radius: 1rem; }
 .footer { background: #f2f5f2; color: #536259; }
+body.admin-mode { --brand: #72521f; --brand-dark: #4b3617; background: #faf8f2; }
+body.admin-mode .navbar { background-color: #f5f0e3 !important; border-bottom-color: #e7dcc1 !important; }
+body.admin-mode .hero { background: linear-gradient(115deg, #f3eddd, #fbf8ef); border-bottom-color: #e7dcc1; }
+.admin-role-badge { background: #72521f; color: #fff; letter-spacing: .03em; }
 @media (max-width: 575px) { .hero .btn { margin: .4rem .2rem .1rem 0 !important; } }
 
 /* Menu React/native details: bez skryptu Bootstrap i z obsługą klawiatury. */
