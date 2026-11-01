@@ -2,11 +2,9 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
+	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"mirmilowo/backend/internal/events"
@@ -15,14 +13,13 @@ import (
 func (a *App) listAdminEvents(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	result, err := a.events.ListAll(ctx)
+	items, err := a.events.ListAll(ctx)
 	if err != nil {
 		a.dbError(w, err)
 		return
 	}
-	respond(w, http.StatusOK, map[string]any{"events": result})
+	writeJSON(w, 200, map[string]any{"items": items})
 }
-
 func (a *App) getAdminEvent(w http.ResponseWriter, r *http.Request) {
 	id, ok := adminEventID(w, r)
 	if !ok {
@@ -30,17 +27,16 @@ func (a *App) getAdminEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	result, err := a.events.GetByID(ctx, id)
+	event, err := a.events.GetByID(ctx, id)
 	if err != nil {
 		a.eventError(w, err)
 		return
 	}
-	respond(w, http.StatusOK, map[string]any{"event": result})
+	writeJSON(w, 200, event)
 }
-
 func (a *App) createAdminEvent(w http.ResponseWriter, r *http.Request) {
-	var input events.Input
-	if !decodeAdminEventInput(w, r, &input) {
+	input, ok := decodeAdminEventInput(w, r)
+	if !ok {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -50,21 +46,16 @@ func (a *App) createAdminEvent(w http.ResponseWriter, r *http.Request) {
 		a.eventError(w, err)
 		return
 	}
-	result, err := a.events.GetByID(ctx, id)
-	if err != nil {
-		a.eventError(w, err)
-		return
-	}
-	respond(w, http.StatusCreated, map[string]any{"event": result})
+	w.Header().Set("Location", fmt.Sprintf("/api/admin/events/%d", id))
+	writeJSON(w, 201, map[string]int64{"id": id})
 }
-
 func (a *App) updateAdminEvent(w http.ResponseWriter, r *http.Request) {
 	id, ok := adminEventID(w, r)
 	if !ok {
 		return
 	}
-	var input events.Input
-	if !decodeAdminEventInput(w, r, &input) {
+	input, ok := decodeAdminEventInput(w, r)
+	if !ok {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -73,41 +64,17 @@ func (a *App) updateAdminEvent(w http.ResponseWriter, r *http.Request) {
 		a.eventError(w, err)
 		return
 	}
-	result, err := a.events.GetByID(ctx, id)
-	if err != nil {
-		a.eventError(w, err)
-		return
-	}
-	respond(w, http.StatusOK, map[string]any{"event": result})
+	w.WriteHeader(http.StatusNoContent)
 }
-
-func (a *App) setAdminEventPublication(w http.ResponseWriter, r *http.Request) {
-	id, ok := adminEventID(w, r)
-	if !ok {
-		return
-	}
-	var input struct {
-		IsPublished *bool `json:"is_published"`
-	}
-	if !decodeAdminEventInput(w, r, &input) {
-		return
-	}
-	if input.IsPublished == nil {
-		fail(w, http.StatusBadRequest, "Podaj status publikacji wydarzenia.")
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-	if err := a.events.SetPublished(ctx, id, *input.IsPublished); err != nil {
-		a.eventError(w, err)
-		return
-	}
-	respond(w, http.StatusOK, map[string]bool{"is_published": *input.IsPublished})
-}
-
 func (a *App) deleteAdminEvent(w http.ResponseWriter, r *http.Request) {
 	id, ok := adminEventID(w, r)
 	if !ok {
+		return
+	}
+	var input struct{}
+	r.Body = http.MaxBytesReader(w, r.Body, 1024)
+	if err := decodeStrictJSON(r.Body, &input); err != nil {
+		fail(w, 400, "Wyślij pusty obiekt JSON: {}.")
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -116,39 +83,35 @@ func (a *App) deleteAdminEvent(w http.ResponseWriter, r *http.Request) {
 		a.eventError(w, err)
 		return
 	}
-	respond(w, http.StatusOK, map[string]bool{"ok": true})
+	w.WriteHeader(http.StatusNoContent)
 }
-
 func adminEventID(w http.ResponseWriter, r *http.Request) (int64, bool) {
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil || id <= 0 {
-		fail(w, http.StatusBadRequest, "Nieprawidłowy identyfikator wydarzenia.")
+	id, err := parseEventID(r.PathValue("id"))
+	if err != nil {
+		fail(w, 400, "Nieprawidłowy identyfikator wydarzenia.")
 		return 0, false
 	}
 	return id, true
 }
-
-func decodeAdminEventInput(w http.ResponseWriter, r *http.Request, input any) bool {
+func decodeAdminEventInput(w http.ResponseWriter, r *http.Request) (events.Input, bool) {
+	var input events.Input
 	r.Body = http.MaxBytesReader(w, r.Body, 128*1024)
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(input); err != nil {
-		fail(w, http.StatusBadRequest, "Nieprawidłowe dane formularza.")
-		return false
+	if err := decodeStrictJSON(r.Body, &input); err != nil {
+		fail(w, 400, "Nieprawidłowe dane formularza. Daty muszą mieć format RFC 3339.")
+		return input, false
 	}
-	if err := dec.Decode(&struct{}{}); err != io.EOF {
-		fail(w, http.StatusBadRequest, "Nieprawidłowe dane formularza.")
-		return false
+	if fields := events.ValidateInput(input); len(fields) > 0 {
+		writeJSON(w, 400, errorResponse{Error: "Popraw zaznaczone pola.", Fields: fields})
+		return input, false
 	}
-	return true
+	return input, true
 }
-
 func (a *App) eventError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, events.ErrNotFound):
-		fail(w, http.StatusNotFound, "Nie znaleziono wydarzenia.")
+		fail(w, 404, "Nie znaleziono wydarzenia.")
 	case errors.Is(err, events.ErrInvalidInput):
-		fail(w, http.StatusBadRequest, "Nieprawidłowe dane wydarzenia: "+err.Error())
+		fail(w, 400, "Nieprawidłowe dane wydarzenia.")
 	default:
 		a.dbError(w, err)
 	}
