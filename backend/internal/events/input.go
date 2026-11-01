@@ -23,59 +23,58 @@ type Input struct {
 	IsPublished bool      `json:"is_published"`
 }
 
+func ValidateInput(input Input) map[string]string {
+	fields := make(map[string]string)
+	for _, field := range []struct {
+		key, value string
+		limit      int
+	}{
+		{"title", input.Title, MaxTitleLength},
+		{"description", input.Description, MaxDescriptionLength},
+		{"location", input.Location, MaxLocationLength},
+	} {
+		value := strings.TrimSpace(field.value)
+		if value == "" {
+			fields[field.key] = "Pole jest wymagane."
+		} else if utf8.RuneCountInString(value) > field.limit {
+			fields[field.key] = fmt.Sprintf("Maksymalnie %d znaków.", field.limit)
+		}
+	}
+	for _, field := range []struct {
+		key   string
+		value time.Time
+	}{{"starts_at", input.StartsAt}, {"ends_at", input.EndsAt}} {
+		if field.value.IsZero() {
+			fields[field.key] = "Termin jest wymagany."
+		} else if field.value.UTC().Year() < 1000 || field.value.UTC().Year() > 9999 {
+			fields[field.key] = "Rok musi należeć do zakresu 1000–9999 (MySQL DATETIME)."
+		}
+	}
+	if !input.StartsAt.IsZero() && !input.EndsAt.IsZero() && input.EndsAt.Before(input.StartsAt) {
+		fields["ends_at"] = "Zakończenie nie może być wcześniejsze niż rozpoczęcie."
+	}
+	return fields
+}
 func validateID(id int64) error {
 	if id <= 0 {
 		return invalid("id", "musi być dodatnią liczbą całkowitą")
 	}
 	return nil
 }
-
 func normalize(input Input) (Input, error) {
+	fields := ValidateInput(input)
+	for _, key := range []string{"title", "description", "location", "starts_at", "ends_at"} {
+		if message, ok := fields[key]; ok {
+			return Input{}, invalid(key, message)
+		}
+	}
 	input.Title = strings.TrimSpace(input.Title)
 	input.Description = strings.TrimSpace(input.Description)
 	input.Location = strings.TrimSpace(input.Location)
-
-	switch {
-	case input.Title == "":
-		return Input{}, invalid("title", "jest wymagany")
-	case utf8.RuneCountInString(input.Title) > MaxTitleLength:
-		return Input{}, invalid("title", "maksymalnie 200 znaków")
-	}
-
-	switch {
-	case input.Description == "":
-		return Input{}, invalid("description", "jest wymagany")
-	case utf8.RuneCountInString(input.Description) > MaxDescriptionLength:
-		return Input{}, invalid("description", "maksymalnie 5000 znaków")
-	}
-
-	switch {
-	case input.Location == "":
-		return Input{}, invalid("location", "jest wymagane")
-	case utf8.RuneCountInString(input.Location) > MaxLocationLength:
-		return Input{}, invalid("location", "maksymalnie 200 znaków")
-	}
-
-	if input.StartsAt.IsZero() {
-		return Input{}, invalid("starts_at", "jest wymagane")
-	}
-	if input.EndsAt.IsZero() {
-		return Input{}, invalid("ends_at", "jest wymagane")
-	}
-
-	input.StartsAt = input.StartsAt.UTC()
-	input.EndsAt = input.EndsAt.UTC()
-
-	if input.EndsAt.Before(input.StartsAt) {
-		return Input{}, invalid("ends_at", "nie może być wcześniejsze niż starts_at")
-	}
-	
-	input.StartsAt = input.StartsAt.Truncate(time.Second)
-	input.EndsAt = input.EndsAt.Truncate(time.Second)
-
+	input.StartsAt = input.StartsAt.UTC().Truncate(time.Second)
+	input.EndsAt = input.EndsAt.UTC().Truncate(time.Second)
 	return input, nil
 }
-
 func invalid(field, message string) error {
 	return fmt.Errorf("%w: %s %s", ErrInvalidInput, field, message)
 }
