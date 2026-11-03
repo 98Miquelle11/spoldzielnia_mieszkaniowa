@@ -290,7 +290,7 @@ W projekcie wyróżnić można kilka najważniejszych plików i katalogów odpow
 Aplikacja działa w architekturze klient–serwer. Użytkownik korzysta z interfejsu frontendowego dostępnego pod adresem `http://localhost:3000`. Frontend wysyła żądania do API, które są przekazywane przez Next.js do backendu Go. Backend przetwarza żądania, wykonuje odpowiednie operacje na bazie MySQL/MariaDB i zwraca odpowiedzi w formacie JSON.
 
 W przypadku logowania backend weryfikuje dane użytkownika, tworzy sesję i zapisuje ją w bazie danych. W przypadku panelu wydarzeń administrator może zarządzać wydarzeniami, a backend sprawdza jego uprawnienia przed wykonaniem operacji.
----
+
 
 ## 6. Instalacja i uruchamianie
 
