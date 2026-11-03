@@ -100,6 +100,13 @@ npm ci
 npm run dev
 ```
 
+W przypadku blokowania skryptu npm.ps1:
+
+```powershell
+npm.cmd ci
+npm.cmd run dev
+```
+
 Otwórz **http://localhost:3000**. Formularz logowania znajduje się pod `/login`.
 Backend Go i MySQL muszą nadal działać. Nie otwieraj pliku HTML bezpośrednio ani
 adresu starej aplikacji w `htdocs`.
@@ -131,13 +138,6 @@ Frontend (w `frontend`):
 npm run typecheck
 npm run build
 npm start
-```
-
-W przypadku blokowania skryptu npm.ps1:
-
-```powershell
-npm.cmd ci
-npm.cmd run dev
 ```
 
 `npm start` uruchamia wcześniej zbudowaną wersję. Nie uruchamiaj go równocześnie
