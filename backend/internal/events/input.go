@@ -40,27 +40,34 @@ func ValidateInput(input Input) map[string]string {
 			fields[field.key] = fmt.Sprintf("Maksymalnie %d znaków.", field.limit)
 		}
 	}
-	for _, field := range []struct {
-		key   string
-		value time.Time
-	}{{"starts_at", input.StartsAt}, {"ends_at", input.EndsAt}} {
-		if field.value.IsZero() {
-			fields[field.key] = "Termin jest wymagany."
-		} else if field.value.UTC().Year() < 1000 || field.value.UTC().Year() > 9999 {
-			fields[field.key] = "Rok musi należeć do zakresu 1000–9999 (MySQL DATETIME)."
+
+	// Walidacja daty rozpoczęcia (wymagana)
+	if input.StartsAt.IsZero() {
+		fields["starts_at"] = "Termin jest wymagany."
+	} else if input.StartsAt.UTC().Year() < 1000 || input.StartsAt.UTC().Year() > 9999 {
+		fields["starts_at"] = "Rok musi należeć do zakresu 1000–9999 (MySQL DATETIME)."
+	}
+
+	// Walidacja daty zakończenia (opcjonalna, sprawdzana tylko "jeśli jest używana")
+	if !input.EndsAt.IsZero() {
+		if input.EndsAt.UTC().Year() < 1000 || input.EndsAt.UTC().Year() > 9999 {
+			fields["ends_at"] = "Rok musi należeć do zakresu 1000–9999 (MySQL DATETIME)."
+		}
+		if !input.StartsAt.IsZero() && input.EndsAt.Before(input.StartsAt) {
+			fields["ends_at"] = "Zakończenie nie może być wcześniejsze niż rozpoczęcie."
 		}
 	}
-	if !input.StartsAt.IsZero() && !input.EndsAt.IsZero() && input.EndsAt.Before(input.StartsAt) {
-		fields["ends_at"] = "Zakończenie nie może być wcześniejsze niż rozpoczęcie."
-	}
+
 	return fields
 }
+
 func validateID(id int64) error {
 	if id <= 0 {
 		return invalid("id", "musi być dodatnią liczbą całkowitą")
 	}
 	return nil
 }
+
 func normalize(input Input) (Input, error) {
 	fields := ValidateInput(input)
 	for _, key := range []string{"title", "description", "location", "starts_at", "ends_at"} {
@@ -75,6 +82,7 @@ func normalize(input Input) (Input, error) {
 	input.EndsAt = input.EndsAt.UTC().Truncate(time.Second)
 	return input, nil
 }
+
 func invalid(field, message string) error {
 	return fmt.Errorf("%w: %s %s", ErrInvalidInput, field, message)
 }
