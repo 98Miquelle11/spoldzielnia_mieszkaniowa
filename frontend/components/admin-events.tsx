@@ -5,11 +5,12 @@ import {
   useCallback,
   useEffect,
   useState,
+  useRef,
   type FormEvent,
 } from "react";
 import { useAuth } from "./auth";
 
-import { isCulturalEvent, type CulturalEvent } from "@/lib/events";
+import { isCulturalEvent, isEventPage, type EventPage, type CulturalEvent } from "@/lib/events";
 
 type EventInput = Pick<
   CulturalEvent,
@@ -225,7 +226,7 @@ function validateDraft(draft: Draft): FieldErrors {
     const value = draft[field].trim();
 
     if (!value) {
-      errors[field] = `${label} jest wymagany.`;
+      errors[field] = field === "location" ? "Miejsce jest wymagane." : `${label} jest wymagany.`;
     } else if (Array.from(value).length > limit) {
       errors[field] = `${label}: maksymalnie ${limit} znaków.`;
     }
@@ -278,6 +279,9 @@ export function AdminEvents() {
   const { user, loading: authLoading, error: authError, reload, setUser } = useAuth();
 
   const [events, setEvents] = useState<CulturalEvent[]>([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const listRequest = useRef(0);
 
   const [listStatus, setListStatus] = useState<
     "loading" | "success" | "error"
@@ -352,22 +356,28 @@ export function AdminEvents() {
   }, [draft, draftReady, draftOwner, user?.id, user?.role]);
 
   const loadEvents = useCallback(async () => {
+    const requestID = ++listRequest.current;
     setListStatus("loading");
     setPageError("");
 
     try {
-      const result = await adminRequest<{
-        items: CulturalEvent[];
-      }>("", { method: "GET" });
+      const result = await adminRequest<EventPage>(`?page=${page}&limit=20`, { method: "GET" });
 
-      if (!Array.isArray(result.items) || !result.items.every(isCulturalEvent)) {
+      if (requestID !== listRequest.current) return;
+      if (!isEventPage(result) || result.pagination.page !== page) {
         throw new Error("Serwer zwrócił nieprawidłową listę wydarzeń.");
       }
 
+      if (result.items.length === 0 && page > 1) {
+        setPage(n => n - 1);
+        return;
+      }
       setEvents(result.items);
+      setHasMore(result.pagination.has_more);
       setListStatus("success");
       setNeedsLogin(false);
     } catch (error) {
+      if (requestID !== listRequest.current) return;
       setListStatus("error");
       setPageError(
         error instanceof Error
@@ -380,12 +390,13 @@ export function AdminEvents() {
         setUser(null);
       }
     }
-  }, [setUser]);
+  }, [setUser, page]);
 
   useEffect(() => {
     if (!authLoading && user?.role === "admin") {
       void loadEvents();
     }
+    return () => { listRequest.current += 1; };
   }, [authLoading, user?.id, user?.role, loadEvents]);
 
   function showError(error: unknown, forForm = false) {
@@ -699,20 +710,6 @@ export function AdminEvents() {
         </div>
       )}
 
-      {/* !!wygaśnięcie sesji ma osobny komunikat i link logowania!! */}
-      {needsLogin && (
-        <div className="alert alert-warning" role="alert">
-          <p>
-            Zaloguj się ponownie. Po zalogowaniu wróć do zarządzania
-            wydarzeniami na tej samej karcie.
-          </p>
-
-          <Link href="/login?returnTo=/admin/wydarzenia" className="btn btn-outline-primary">
-            Przejdź do logowania
-          </Link>
-        </div>
-      )}
-
       {draftWarning && (
         <div className="alert alert-warning" role="alert">
           {draftWarning}
@@ -907,6 +904,14 @@ export function AdminEvents() {
 
       {listStatus === "success" && events.length === 0 && (
         <p>Brak wydarzeń. Dodaj pierwsze wydarzenie.</p>
+      )}
+
+      {listStatus === "success" && (
+        <nav aria-label="Strony wydarzeń administratora" className="d-flex flex-wrap align-items-center gap-3 mb-4">
+          <button className="btn btn-outline-primary" disabled={busy || page === 1} onClick={() => setPage(n => n - 1)}>Poprzednia strona</button>
+          <span aria-live="polite">Strona {page}</span>
+          <button className="btn btn-outline-primary" disabled={busy || !hasMore} onClick={() => setPage(n => n + 1)}>Następna strona</button>
+        </nav>
       )}
 
       {listStatus === "success" && events.length > 0 && (

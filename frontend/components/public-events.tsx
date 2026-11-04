@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { EventsError, fetchEvents, formatEventDate, isCulturalEvent, type CulturalEvent, type Period } from "@/lib/events";
+import { EventsError, fetchEvents, formatEventDate, isCulturalEvent, isEventPage, type EventPage, type CulturalEvent, type Period } from "@/lib/events";
 
 type Result<T> = { state: "loading" } | { state: "success"; data: T } | { state: "error"; message: string };
 
@@ -15,25 +15,23 @@ function EventDates({ event }: { event: CulturalEvent }) {
 }
 
 export function PublicEvents({ period }: { period: Period | null }) {
-  const [result, setResult] = useState<Result<CulturalEvent[]>>({ state: "loading" });
+  const [result, setResult] = useState<Result<EventPage>>({ state: "loading" });
   const [retry, setRetry] = useState(0);
-  const [visible, setVisible] = useState(20);
+  const [page, setPage] = useState(1);
   useEffect(() => {
     if (!period) return;
     const controller = new AbortController();
     setResult({ state: "loading" });
-    setVisible(20);
-    void fetchEvents(`?period=${period}`, controller.signal).then(data => {
-      if (!data || typeof data !== "object" || !("items" in data) ||
-          !Array.isArray(data.items) || !data.items.every(isCulturalEvent)) {
+    void fetchEvents(`?period=${period}&page=${page}&limit=20`, controller.signal).then(data => {
+      if (!isEventPage(data) || data.pagination.page !== page) {
         throw new Error("Serwer zwrócił nieprawidłową listę wydarzeń.");
       }
-      if (!controller.signal.aborted) setResult({ state: "success", data: data.items });
+      if (!controller.signal.aborted) setResult({ state: "success", data: data });
     }).catch(error => {
       if (!controller.signal.aborted) setResult({ state: "error", message: error instanceof Error ? error.message : "Nie udało się pobrać wydarzeń." });
     });
     return () => controller.abort();
-  }, [period, retry]);
+  }, [period, page, retry]);
   return <section className="container py-5">
     <h1 className="h2">Imprezy kulturalne</h1>
     <nav aria-label="Filtr wydarzeń" className="nav nav-pills gap-2 my-4">
@@ -44,8 +42,8 @@ export function PublicEvents({ period }: { period: Period | null }) {
       : result.state === "loading" ? <p role="status">Ładowanie wydarzeń…</p>
       : result.state === "error" ? <div role="alert" className="alert alert-danger"><p>{result.message}</p><button className="btn btn-outline-primary" onClick={() => setRetry(n => n + 1)}>Spróbuj ponownie</button></div>
       : <>
-        {result.data.length === 0 && <p role="status">Brak {period === "past" ? "archiwalnych" : "nadchodzących"} wydarzeń.</p>}
-        <div className="row g-4">{result.data.slice(0, visible).map(event => <div className="col-12 col-md-6 col-xl-4" key={event.id}>
+        {result.data.items.length === 0 && <p role="status">Brak {period === "past" ? "archiwalnych" : "nadchodzących"} wydarzeń.</p>}
+        <div className="row g-4">{result.data.items.map(event => <div className="col-12 col-md-6 col-xl-4" key={event.id}>
           <article className="card h-100 shadow-sm"><div className="card-body d-flex flex-column">
             <h2 className="h5 text-break">{event.title}</h2>
             <EventDates event={event} />
@@ -54,7 +52,11 @@ export function PublicEvents({ period }: { period: Period | null }) {
             <Link className="btn btn-outline-primary mt-auto align-self-start" href={`/imprezy/${event.id}?period=${period}`}>Szczegóły<span className="visually-hidden">: {event.title}</span></Link>
           </div></article>
         </div>)}</div>
-        {visible < result.data.length && <button className="btn btn-primary mt-4" onClick={() => setVisible(n => n + 20)}>Pokaż kolejne wydarzenia ({result.data.length - visible})</button>}
+        <nav aria-label="Strony wydarzeń" className="d-flex align-items-center gap-3 mt-4">
+          <button className="btn btn-outline-primary" disabled={page === 1} onClick={() => setPage(n => n - 1)}>Poprzednia strona</button>
+          <span aria-live="polite">Strona {page}</span>
+          <button className="btn btn-primary" disabled={!result.data.pagination.has_more} onClick={() => setPage(n => n + 1)}>Następna strona</button>
+        </nav>
       </>}
   </section>;
 }
