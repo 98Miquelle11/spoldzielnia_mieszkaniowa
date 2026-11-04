@@ -87,3 +87,47 @@ test("rzeczywiste API blokuje mieszkańca dla wszystkich operacji", async ({ req
     expect((await request.fetch(url, { method, headers: { Origin: origin, "Content-Type": "application/json" }, ...(method === "GET" ? {} : { data: {} }) })).status()).toBe(403);
   }
 });
+
+test("stronicowanie API nie pomija rekordów, ogranicza opisy i zachowuje pełne szczegóły", async ({ request, baseURL }) => {
+  test.skip(!email || !password, "Wymagane konto admin E2E i testowa baza.");
+  const headers = { Origin: new URL(baseURL!).origin };
+  await login(request, headers.Origin, email!, password!);
+  const ids: number[] = [];
+  const description = "ą".repeat(5000);
+  try {
+    for (let i = 0; i < 45; i++) {
+      const response = await request.post("/api/admin/events", { headers, data: { title: `Paginacja ${Date.now()} ${i}`, description, location: "Sala", starts_at: "2099-12-01T16:00:00Z", is_published: true } });
+      expect(response.status()).toBe(201);
+      ids.push((await response.json()).id);
+    }
+    for (const endpoint of ["/api/events", "/api/admin/events"]) {
+      const defaultResponse = await (await request.get(endpoint)).json();
+      expect(defaultResponse.items).toHaveLength(20);
+      expect(defaultResponse.pagination).toEqual({ page: 1, limit: 20, has_more: true });
+      const seen: number[] = [];
+      for (let page = 1; page <= 100; page++) {
+        const response = await request.get(`${endpoint}?page=${page}&limit=7`);
+        expect(response.status()).toBe(200);
+        const data = await response.json();
+        expect(data.items.length).toBeLessThanOrEqual(7);
+        expect(data.pagination.page).toBe(page);
+        for (const item of data.items) {
+          expect(Array.from(item.description).length).toBeLessThanOrEqual(240);
+          seen.push(item.id);
+        }
+        if (!data.pagination.has_more) break;
+        expect(page).toBeLessThan(100);
+      }
+      expect(new Set(seen).size).toBe(seen.length);
+      expect(ids.every(id => seen.includes(id))).toBe(true);
+      for (const invalid of ["page=0", "limit=51", "page=1&page=2"]) expect((await request.get(`${endpoint}?${invalid}`)).status()).toBe(400);
+    }
+    expect((await (await request.get(`/api/events/${ids[0]}`)).json()).description).toBe(description);
+    expect((await (await request.get(`/api/admin/events/${ids[0]}`)).json()).description).toBe(description);
+    const invalidPeriod = await request.get("/api/events?period=wrong");
+    expect(invalidPeriod.status()).toBe(400);
+    expect((await invalidPeriod.json()).error).toBe("Nieprawidłowy filtr. Dozwolone wartości period: upcoming lub past.");
+  } finally {
+    for (const id of ids) await request.delete(`/api/admin/events/${id}`, { headers, data: {} });
+  }
+});

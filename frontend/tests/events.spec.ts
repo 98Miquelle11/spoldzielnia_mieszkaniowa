@@ -9,6 +9,9 @@ const fixture = {
   starts_at: "2026-11-21T16:00:00Z", ends_at: "2026-11-21T18:00:00Z",
   is_published: true, created_at: "2026-11-01T10:00:00Z", updated_at: "2026-11-01T10:00:00Z",
 };
+function listPage(items: unknown[], page = 1, limit = 20, hasMore = false) {
+  return { items, pagination: { page, limit, has_more: hasMore } };
+}
 async function login(page: Page, baseURL: string, email: string, password: string) {
   const response = await page.request.post("/api/auth/login", { headers: { Origin: new URL(baseURL).origin }, data: { email, password } });
   expect(response.status()).toBe(200);
@@ -17,7 +20,7 @@ async function login(page: Page, baseURL: string, email: string, password: strin
 test("publiczna lista, szczegóły i czas Warszawy niezależny od strefy przeglądarki", async ({ browser, baseURL }) => {
   const context = await browser.newContext({ baseURL, timezoneId: "America/New_York" });
   const page = await context.newPage();
-  await page.route("**/api/events?*", route => route.fulfill({ json: { items: [fixture] } }));
+  await page.route("**/api/events?*", route => route.fulfill({ json: listPage([fixture]) }));
   await page.route("**/api/events/987", route => route.fulfill({ json: fixture }));
   await page.goto("/imprezy");
   await expect(page.getByRole("heading", { name: fixture.title })).toBeVisible();
@@ -29,7 +32,7 @@ test("publiczna lista, szczegóły i czas Warszawy niezależny od strefy przegl�
 });
 
 test("archiwum pozostaje po odświeżeniu, pusta lista i błędny filtr", async ({ page }) => {
-  await page.route("**/api/events?*", route => route.fulfill({ json: { items: [] } }));
+  await page.route("**/api/events?*", route => route.fulfill({ json: listPage([]) }));
   await page.goto("/imprezy");
   await page.getByRole("link", { name: "Archiwalne", exact: true }).click();
   await expect(page).toHaveURL(/period=past/);
@@ -44,7 +47,7 @@ test("ładowanie, błąd połączenia, ponowienie i niedostępne szczegóły", a
   let fail = true;
   await page.route("**/api/events?*", async route => {
     await new Promise(resolve => setTimeout(resolve, 400));
-    if (fail) await route.abort(); else await route.fulfill({ json: { items: [] } });
+    if (fail) await route.abort(); else await route.fulfill({ json: listPage([]) });
   });
   await page.goto("/imprezy");
   await expect(page.getByText("Ładowanie wydarzeń…")).toBeVisible();
@@ -61,11 +64,22 @@ test("ładowanie, błąd połączenia, ponowienie i niedostępne szczegóły", a
 
 test("duża lista i układ mobilny", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
-  await page.route("**/api/events?*", route => route.fulfill({ json: { items: Array.from({ length: 45 }, (_, i) => ({ ...fixture, id: i + 1, title: `Wydarzenie ${i + 1} ${"x".repeat(200)}` })) } }));
+  const requests: number[] = [];
+  await page.route("**/api/events?*", route => {
+    const number = Number(new URL(route.request().url()).searchParams.get("page"));
+    requests.push(number);
+    const all = Array.from({ length: 45 }, (_, i) => ({ ...fixture, id: i + 1, title: `Wydarzenie ${i + 1} ${"x".repeat(200)}` }));
+    return route.fulfill({ json: listPage(all.slice((number - 1) * 20, number * 20), number, 20, number < 3) });
+  });
   await page.goto("/imprezy");
   await expect(page.locator("main article")).toHaveCount(20);
-  await page.getByRole("button", { name: /Pokaż kolejne/ }).click();
-  await expect(page.locator("main article")).toHaveCount(40);
+  await page.getByRole("button", { name: "Następna strona" }).click();
+  await expect(page.locator("main article")).toHaveCount(20);
+  await expect(page.getByText("Strona 2", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Następna strona" }).click();
+  await expect(page.locator("main article")).toHaveCount(5);
+  await expect(page.getByRole("button", { name: "Następna strona" })).toBeDisabled();
+  expect(requests).toEqual([1, 2, 3]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
@@ -99,7 +113,7 @@ test("pełny CRUD, publikacja, CSRF i zachowanie szkicu po wygaśnięciu sesji",
     await page.getByLabel("Miejsce", { exact: true }).fill("Sala testowa");
     await page.getByLabel("Opis", { exact: true }).fill("Opis z testu integracyjnego");
     await page.getByLabel("Rozpoczęcie", { exact: true }).fill("2030-12-01T17:00");
-    const created = page.waitForResponse(r => r.url().endsWith("/api/admin/events") && r.request().method() === "POST");
+    const created = page.waitForResponse(r => new URL(r.url()).pathname === "/api/admin/events" && r.request().method() === "POST");
     await page.getByRole("button", { name: "Zapisz wydarzenie" }).click();
     const response = await created;
     expect(response.status()).toBe(201);
@@ -141,7 +155,7 @@ test("pełny CRUD, publikacja, CSRF i zachowanie szkicu po wygaśnięciu sesji",
 test("edycja zachowuje drugą godzinę jesienną, a formularz odrzuca godzinę nieistniejącą wiosną", async ({ page }) => {
   const event = { ...fixture, starts_at: "2026-10-25T01:30:00Z", ends_at: "2026-10-25T02:00:00Z" };
   await page.route("**/api/auth/me", route => route.fulfill({ json: { user: { id: 1, email: "admin@example.test", role: "admin" } } }));
-  await page.route("**/api/admin/events", route => route.fulfill({ json: { items: [event] } }));
+  await page.route(/\/api\/admin\/events(?:\?.*)?$/, route => route.fulfill({ json: listPage([event]) }));
   await page.route("**/api/admin/events/987", route => route.request().method() === "PUT"
     ? route.fulfill({ status: 204 }) : route.fulfill({ json: event }));
   await page.goto("/admin/wydarzenia");
@@ -158,4 +172,45 @@ test("edycja zachowuje drugą godzinę jesienną, a formularz odrzuca godzinę n
   await page.getByLabel("Rozpoczęcie", { exact: true }).fill("2027-03-28T02:30");
   await page.getByRole("button", { name: "Zapisz wydarzenie" }).click();
   await expect(page.getByText(/Ta godzina nie istnieje/)).toBeVisible();
+});
+
+test("walidacja miejsca i paginacja panelu administratora", async ({ page }) => {
+  await page.route("**/api/auth/me", route => route.fulfill({ json: { user: { id: 1, email: "admin@example.test", role: "admin" } } }));
+  const pages: number[] = [];
+  await page.route(/\/api\/admin\/events(?:\?.*)?$/, route => {
+    const number = Number(new URL(route.request().url()).searchParams.get("page"));
+    pages.push(number);
+    return route.fulfill({ json: listPage([{ ...fixture, id: number, title: `Strona administracyjna ${number}` }], number, 20, number === 1) });
+  });
+  await page.goto("/admin/wydarzenia");
+  await expect(page.getByRole("heading", { name: "Strona administracyjna 1", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Następna strona" }).click();
+  await expect(page.getByRole("heading", { name: "Strona administracyjna 2", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Następna strona" })).toBeDisabled();
+  await page.getByRole("button", { name: "Poprzednia strona" }).click();
+  await expect(page.getByRole("heading", { name: "Strona administracyjna 1", exact: true })).toBeVisible();
+  expect(pages).toEqual([1, 2, 1]);
+  await page.getByRole("button", { name: "Dodaj wydarzenie" }).click();
+  await page.getByRole("button", { name: "Zapisz wydarzenie" }).click();
+  await expect(page.getByText("Miejsce jest wymagane.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Miejsce jest wymagany.", { exact: true })).toHaveCount(0);
+});
+
+test("nagłówek i długi tytuł administratora mieszczą się na ekranie", async ({ page }) => {
+  await page.route("**/api/auth/me", route => route.fulfill({ json: { user: { id: 1, email: "admin@example.test", role: "admin" } } }));
+  await page.route(/\/api\/admin\/events(?:\?.*)?$/, route => route.fulfill({ json: listPage([{ ...fixture, title: "ż".repeat(200) }]) }));
+  await page.goto("/admin/wydarzenia");
+  await expect(page.getByRole("heading", { name: "ż".repeat(200), exact: true })).toBeVisible();
+  for (const width of [375, 992, 1024, 1199, 1200, 1280, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    const toggler = page.getByRole("button", { name: "Rozwiń menu" });
+    if (await toggler.isVisible() && await toggler.getAttribute("aria-expanded") === "false") await toggler.click();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    for (const name of ["Edytuj", "Ukryj", "Usuń", "Wyloguj się"]) {
+      const button = page.getByRole("button", { name, exact: true });
+      await expect(button).toBeVisible();
+      const box = await button.boundingBox();
+      expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+    }
+  }
 });
