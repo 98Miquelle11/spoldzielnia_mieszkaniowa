@@ -79,7 +79,12 @@ func normalize(input Input) (Input, error) {
 	input.Description = strings.TrimSpace(input.Description)
 	input.Location = strings.TrimSpace(input.Location)
 	input.StartsAt = input.StartsAt.UTC().Truncate(time.Second)
-	input.EndsAt = input.EndsAt.UTC().Truncate(time.Second)
+	// Brak zakończenia oznacza wydarzenie punktowe. Nie zapisuj roku 1 do MySQL.
+	if input.EndsAt.IsZero() {
+		input.EndsAt = input.StartsAt
+	} else {
+		input.EndsAt = input.EndsAt.UTC().Truncate(time.Second)
+	}
 	return input, nil
 }
 
