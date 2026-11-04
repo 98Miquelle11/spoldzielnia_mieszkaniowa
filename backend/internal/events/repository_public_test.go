@@ -27,7 +27,7 @@ func setupRepo(t *testing.T) (*Repository, sqlmock.Sqlmock) {
 
 func TestListPublished_UpcomingSortAndEmptyList(t *testing.T) {
 	repo, mock := setupRepo(t)
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT " + columns + " FROM cultural_events WHERE is_published = ? AND ends_at >= ? ORDER BY starts_at ASC, id ASC")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT "+columns+" FROM cultural_events WHERE is_published = ? AND ends_at >= ? ORDER BY starts_at ASC, id ASC")).
 		WithArgs(true, sqlmock.AnyArg()).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "title", "description", "starts_at", "ends_at", "location", "is_published", "created_at", "updated_at"}))
 
@@ -43,7 +43,7 @@ func TestListPublished_UpcomingSortAndEmptyList(t *testing.T) {
 func TestListPublished_ArchivedSort(t *testing.T) {
 	repo, mock := setupRepo(t)
 	now := time.Now().UTC().Truncate(time.Second)
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT " + columns + " FROM cultural_events WHERE is_published = ? AND ends_at < ? ORDER BY ends_at DESC, id DESC")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT "+columns+" FROM cultural_events WHERE is_published = ? AND ends_at < ? ORDER BY ends_at DESC, id DESC")).
 		WithArgs(true, sqlmock.AnyArg()).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "title", "description", "starts_at", "ends_at", "location", "is_published", "created_at", "updated_at"}).
 			AddRow(2, "Nowsze", "Opis", now.Add(-2*time.Hour), now.Add(-time.Hour), "Sala", true, now, now).
@@ -68,7 +68,7 @@ func TestListPublished_InvalidFilter(t *testing.T) {
 
 func TestGetPublishedByID_HiddenOrMissingReturnsNotFound(t *testing.T) {
 	repo, mock := setupRepo(t)
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT " + columns + " FROM cultural_events WHERE id = ? AND is_published = ?")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT "+columns+" FROM cultural_events WHERE id = ? AND is_published = ?")).
 		WithArgs(int64(42), true).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "title", "description", "starts_at", "ends_at", "location", "is_published", "created_at", "updated_at"}))
 
@@ -88,7 +88,7 @@ func TestGetPublishedByID_InvalidID(t *testing.T) {
 
 func TestListPublished_DatabaseFailure(t *testing.T) {
 	repo, mock := setupRepo(t)
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT " + columns + " FROM cultural_events WHERE is_published = ? AND ends_at >= ? ORDER BY starts_at ASC, id ASC")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT "+columns+" FROM cultural_events WHERE is_published = ? AND ends_at >= ? ORDER BY starts_at ASC, id ASC")).
 		WithArgs(true, sqlmock.AnyArg()).
 		WillReturnError(errors.New("db down"))
 
