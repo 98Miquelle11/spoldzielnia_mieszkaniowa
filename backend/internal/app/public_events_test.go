@@ -37,7 +37,7 @@ func TestPublicListInvalidPeriodAndDatabaseFailure(t *testing.T) {
 	}
 	mock.ExpectQuery("SELECT .*FROM cultural_events").WillReturnError(errors.New("private SQL details"))
 	w := request(a, "GET", "/api/events", "", nil)
-	if w.Code != 500 || strings.Contains(w.Body.String(), "private SQL") {
+	if w.Code != 503 || strings.Contains(w.Body.String(), "private SQL") {
 		t.Fatalf("%d %s", w.Code, w.Body)
 	}
 }
@@ -66,7 +66,7 @@ func TestPublicDetailHiddenMissingAndMalformedID(t *testing.T) {
 		t.Fatalf("hidden or missing: %d", w.Code)
 	}
 	mock.ExpectQuery("SELECT .*FROM cultural_events").WillReturnError(errors.New("connection details"))
-	if w := request(a, "GET", "/api/events/43", "", nil); w.Code != 500 || strings.Contains(w.Body.String(), "connection details") {
+	if w := request(a, "GET", "/api/events/43", "", nil); w.Code != 503 || strings.Contains(w.Body.String(), "connection details") {
 		t.Fatalf("database error: %d %s", w.Code, w.Body)
 	}
 }
