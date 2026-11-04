@@ -17,7 +17,8 @@ export function LoginForm() {
     try {
       const result = await authRequest("login", { email: String(fields.get("email")).trim(), password: String(fields.get("password")) });
       if (!result.user) throw new Error("Nieprawidłowa odpowiedź serwera.");
-      form.reset(); setUser(result.user); router.push("/"); router.refresh();
+      form.reset(); setUser(result.user); const target = new URLSearchParams(window.location.search).get("returnTo");
+      router.push(target === "/admin/wydarzenia" ? target : "/"); router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Nie udało się zalogować.");
     } finally { setPending(false); }

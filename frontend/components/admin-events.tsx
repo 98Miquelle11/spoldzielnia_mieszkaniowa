@@ -9,17 +9,7 @@ import {
 } from "react";
 import { useAuth } from "./auth";
 
-type CulturalEvent = {
-  id: number;
-  title: string;
-  description: string;
-  location: string;
-  starts_at: string;
-  ends_at: string;
-  is_published: boolean;
-  created_at: string;
-  updated_at: string;
-};
+import type { CulturalEvent } from "@/lib/events";
 
 type EventInput = Pick<
   CulturalEvent,
@@ -42,7 +32,7 @@ type Draft = {
 };
 
 type FieldErrors = Record<string, string>;
-const DRAFT_KEY = "admin-events-draft-v1";  //docelowo można użyć klucza zawierającego id użytkownika
+const DRAFT_KEY = "admin-events-draft-v2";
 
 class ApiError extends Error {
   constructor(
@@ -247,7 +237,7 @@ function validateDraft(draft: Draft): FieldErrors {
     errors.starts_at = "Podaj poprawny termin rozpoczęcia.";
   }
 
-  if (!endsAt || Number.isNaN(endsAt.getTime())) {
+  if (endsAt && Number.isNaN(endsAt.getTime())) {
     errors.ends_at = "Podaj poprawny termin zakończenia.";
   }
 
@@ -263,6 +253,11 @@ function validateDraft(draft: Draft): FieldErrors {
       "Zakończenie nie może być wcześniejsze niż rozpoczęcie.";
   }
 
+  for (const [field, value] of [["starts_at", startsAt], ["ends_at", endsAt]] as const) {
+    if (value && !Number.isNaN(value.getTime()) && (value.getUTCFullYear() < 1000 || value.getUTCFullYear() > 9999)) {
+      errors[field] = "Rok musi należeć do zakresu 1000–9999.";
+    }
+  }
   return errors;
 }
 
@@ -279,6 +274,7 @@ export function AdminEvents() {
 
   // chroni przed nadpisaniem zapisanego szkicu zanim go odczytamy
   const [draftReady, setDraftReady] = useState(false);
+  const [draftOwner, setDraftOwner] = useState<number | null>(null);
   const [draftWarning, setDraftWarning] = useState("");
 
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -294,8 +290,14 @@ export function AdminEvents() {
   useEffect(() => {
     setTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
 
+    if (authLoading) return;
+    if (user?.role !== "admin") { setDraftReady(true); return; }
+    if (draftOwner === user.id) return;
+    setDraft(null);
+    setFieldErrors({});
+    setFormError("");
     try {
-      const saved = sessionStorage.getItem(DRAFT_KEY);
+      const saved = sessionStorage.getItem(`${DRAFT_KEY}:${user.id}`);
 
       if (saved) {
         const parsed: unknown = JSON.parse(saved);
@@ -303,7 +305,7 @@ export function AdminEvents() {
         if (isDraft(parsed)) {
           setDraft(parsed);
         } else {
-          sessionStorage.removeItem(DRAFT_KEY);
+          sessionStorage.removeItem(`${DRAFT_KEY}:${user.id}`);
         }
       }
     } catch {
@@ -312,18 +314,19 @@ export function AdminEvents() {
       );
     }
 
+    setDraftOwner(user.id);
     setDraftReady(true);
-  }, []);
+  }, [authLoading, user?.id, user?.role, draftOwner]);
 
   useEffect(() => {
-    if (!draftReady) return;
+    if (!draftReady || !user || user.role !== "admin" || draftOwner !== user.id) return;
 
     // po zapisie lub anulowaniu draft staje się null
     try {
       if (draft) {
-        sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+        sessionStorage.setItem(`${DRAFT_KEY}:${user.id}`, JSON.stringify(draft));
       } else {
-        sessionStorage.removeItem(DRAFT_KEY);
+        sessionStorage.removeItem(`${DRAFT_KEY}:${user.id}`);
       }
 
       setDraftWarning("");
@@ -333,7 +336,7 @@ export function AdminEvents() {
           "Przed opuszczeniem strony skopiuj treść formularza.",
       );
     }
-  }, [draft, draftReady]);
+  }, [draft, draftReady, draftOwner, user?.id, user?.role]);
 
   const loadEvents = useCallback(async () => {
     setListStatus("loading");
@@ -463,10 +466,12 @@ export function AdminEvents() {
       description: draft.description.trim(),
       location: draft.location.trim(),
       starts_at: new Date(draft.starts_at).toISOString(),
-      ends_at: new Date(draft.ends_at).toISOString(),
+      ends_at: new Date(draft.ends_at || draft.starts_at).toISOString(),
       is_published: draft.is_published,
     };
 
+    // Zapisz szkic także przed żądaniem, aby przetrwał wygaśnięcie sesji.
+    try { sessionStorage.setItem(`${DRAFT_KEY}:${user!.id}`, JSON.stringify(draft)); } catch { /* ostrzeżenie obsługuje efekt */ }
     setBusy(true);
 
     try {
@@ -608,7 +613,7 @@ export function AdminEvents() {
     return (
       <section className="container py-5">
         <h1 className="h2">Zarządzanie wydarzeniami</h1>
-        <p>Zaloguj się na konto administratora.</p>
+        <p role={needsLogin ? "alert" : undefined}>{needsLogin ? "Sesja wygasła. Zaloguj się ponownie na konto administratora." : "Zaloguj się na konto administratora."}</p>
 
         {draft && (
           <p>Twój szkic formularza został zachowany na tej karcie.</p>
@@ -620,7 +625,7 @@ export function AdminEvents() {
           </p>
         )}
 
-        <Link href="/login" className="btn btn-primary">
+        <Link href="/login?returnTo=/admin/wydarzenia" className="btn btn-primary">
           Zaloguj się
         </Link>
       </section>
@@ -675,7 +680,7 @@ export function AdminEvents() {
             wydarzeniami na tej samej karcie.
           </p>
 
-          <Link href="/login" className="btn btn-outline-primary">
+          <Link href="/login?returnTo=/admin/wydarzenia" className="btn btn-outline-primary">
             Przejdź do logowania
           </Link>
         </div>
@@ -774,7 +779,7 @@ export function AdminEvents() {
 
                 <div className="col-md-6">
                   <label htmlFor="event-ends" className="form-label">
-                    Zakończenie
+                    Zakończenie (opcjonalne)
                   </label>
 
                   <input
@@ -784,10 +789,10 @@ export function AdminEvents() {
                     type="datetime-local"
                     step={1}
                     value={draft.ends_at}
-                    required
                     onChange={(e) => updateDraft("ends_at", e.target.value)}
                   />
 
+                  <div className="form-text">Bez zakończenia wydarzenie jest punktowe.</div>
                   {fieldError("ends_at")}
                 </div>
 
@@ -917,7 +922,7 @@ export function AdminEvents() {
                     </p>
                   </div>
 
-                  <div className="d-flex flex-wrap align-items-start gap-2">
+                  <div className="d-flex flex-wrap align-items-start gap-2 flex-shrink-0">
                     <button
                       type="button"
                       className="btn btn-sm btn-outline-primary"

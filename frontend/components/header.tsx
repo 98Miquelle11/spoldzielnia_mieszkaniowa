@@ -29,7 +29,7 @@ export function Header() {
     return () => document.body.classList.remove("admin-mode");
   }, [auth.user?.role]);
   return <header>
-    <nav className="navbar navbar-expand-lg bg-white border-bottom" aria-label="Nawigacja główna">
+    <nav className="navbar navbar-expand-xxl bg-white border-bottom" aria-label="Nawigacja główna">
       <div className="container">
         <Link className="navbar-brand fw-bold" href="/">Mirmiłowo <span className="brand-subtitle d-block fw-normal">Spółdzielnia Mieszkaniowa</span></Link>
         <button className="navbar-toggler" type="button" aria-controls="menu" aria-expanded={open} aria-label="Rozwiń menu" onClick={() => setOpen(!open)}><span className="navbar-toggler-icon" /></button>
