@@ -2,7 +2,10 @@
 
 Przeniesiono istniejący kod dostarczonego archiwum, a nie pełny zakres planowany
 w pierwotnych 12 etapach. Ponieważ oryginalne pliki SQL zawierały wyłącznie
-komentarze, dodano nowy schemat kont i sesji. Nie było danych do przeniesienia.
+komentarze, przygotowano nowy schemat bazy danych obejmujący konta
+użytkowników, sesje oraz wydarzenia kulturalne. Nie było istniejących
+danych użytkowników ani sesji do przeniesienia. Dodano również przykładowe
+dane wydarzeń wykorzystywane do testowania modułu.
 
 | Oryginalny element | Nowy odpowiednik |
 | --- | --- |
@@ -45,6 +48,13 @@ Aktualna rola jest odczytywana z `users`, więc zmiana roli działa przy następ
 - Stare linki PHP kierują do nowych adresów. Nieznana strona zwraca 404.
 - Nieistniejące moduły pozostają publicznymi stronami informacyjnymi. Nie
   zawierają żadnych prywatnych danych ani API funkcji mieszkańca.
+- Moduł wydarzeń kulturalnych posiada obecnie publiczne API oraz panel
+  administracyjny. Lista publiczna udostępnia wyłącznie opublikowane
+  wydarzenia, natomiast administrator może zarządzać wszystkimi rekordami.
+- Daty wydarzeń są przechowywane w bazie danych w UTC, a prezentowane
+  użytkownikom z uwzględnieniem strefy czasowej Europe/Warsaw.
+- Operacje administracyjne dotyczące wydarzeń są zabezpieczone kontrolą
+  sesji i roli administratora po stronie backendu Go.
 
 ## Dalsze etapy
 
