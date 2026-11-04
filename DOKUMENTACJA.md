@@ -35,7 +35,7 @@ Projekt ma charakter dydaktyczny i jest przeznaczony do lokalnego uruchamiania. 
 | 1 | Repozytorium, struktura projektu, szkielet strony, nawigacja i README | **Wykonany** — elementy są obecne w projekcie |
 | 2 | Baza danych, konta użytkowników, logowanie, wylogowanie, role i uprawnienia | **W trakcie** — działa logowanie, odczyt sesji i wylogowanie przez API Go; dostępne jest tworzenie kont oraz trwałe sesje MySQL. |
 | 3 | Spółdzielnia: Struktura i Historia | Planowany |
-| 4 | Ogłoszenia: Imprezy kulturalne | Planowany |
+| 4 | Ogłoszenia: Imprezy kulturalne | **Wykonany w aktualnym zakresie** — działa publiczna lista wydarzeń, szczegóły, filtrowanie oraz panel administratora umożliwiający zarządzanie wydarzeniami. |
 | 5 | Ogłoszenia: Przetargi | Planowany |
 | 6 | Ogłoszenia: Wynajem | Planowany |
 | 7 | Kalendarz wydarzeń i terminów | Planowany |
@@ -43,7 +43,7 @@ Projekt ma charakter dydaktyczny i jest przeznaczony do lokalnego uruchamiania. 
 | 9 | Strefa mieszkańca: Druki i wnioski, Statut i regulaminy | Planowany |
 | 10 | Czat mieszkańców | Planowany |
 | 11 | E-mieszkaniec | Planowany |
-| 12 | Kontakt, integracja oraz testy końcowe | Planowany |
+| 12 | Kontakt, integracja oraz testy końcowe | **Częściowo wykonany** — przygotowano podstawowe testy backendu i testy przeglądarkowe. Podstrona kontaktowa ma charakter informacyjny. |
 
 ### 2.2. Co jest już dostępne
 
@@ -59,6 +59,14 @@ W obecnej wersji projektu znajdują się:
 - trwałe sesje przechowywane w MySQL, które pozostają aktywne po restarcie backendu i wygasają po 8 godzinach;
 - panel wydarzeń administratora dostępny pod adresem `/admin/wydarzenia`, umożliwiający wyświetlanie listy wydarzeń, dodawanie, edytowanie, publikowanie, ukrywanie i usuwanie;
 - testy backendu obejmujące m.in. logowanie, obsługę sesji, błędne hasła, role i błędy SQL.
+- publiczna lista wydarzeń kulturalnych dostępna pod adresem `/imprezy`;
+- widok szczegółów pojedynczego wydarzenia dostępny pod adresem `/imprezy/{id}`;
+- filtrowanie wydarzeń na nadchodzące i archiwalne;
+- wyświetlanie terminów wydarzeń z uwzględnieniem strefy czasowej `Europe/Warsaw`;
+- stronicowanie listy wydarzeń, ograniczające liczbę wyświetlanych rekordów do 20 na stronę;
+- obsługa pustych wyników wyszukiwania oraz błędów pobierania danych;
+- możliwość dodawania, edytowania, publikowania, ukrywania i usuwania wydarzeń przez administratora;
+- zabezpieczenie operacji administracyjnych poprzez weryfikację sesji i roli `admin` po stronie backendu Go.
 
 **Ograniczenie zakresu:** pozostałe moduły opisane w dokumentacji nadal są planowane. Czat, wnioski, kalendarz i inne funkcjonalności wymagają dalszej implementacji.
 
@@ -81,7 +89,7 @@ W obecnej wersji projektu znajdują się:
 
 ### 3.3. Ogłoszenia
 
-**Obecnie:** menu udostępnia odnośniki do „Imprez kulturalnych”, „Przetargów”, „Wynajmu” i „Kalendarza”. Żaden z tych modułów nie zawiera jeszcze docelowej obsługi danych.
+**Obecnie:** menu udostępnia odnośniki do „Imprez kulturalnych”, „Przetargów”, „Wynajmu” i „Kalendarza”. Moduł „Imprezy kulturalne” posiada już działającą obsługę danych, natomiast pozostałe moduły mają obecnie charakter informacyjny.
 
 **Docelowo:**
 
@@ -132,6 +140,7 @@ Dostęp do funkcji wymagających uwierzytelnienia powinien być sprawdzany po st
 **Obecnie:** dostępny jest formularz logowania, obsługa sesji użytkowników oraz możliwość wylogowania. Konta mieszkańców i administratorów są tworzone za pomocą narzędzia konsolowego. System rozróżnia role `mieszkaniec` i `admin`, a hasła są przechowywane w postaci skrótów bcrypt.
 
 Dostępny jest również panel administracyjny wydarzeń pod adresem `/admin/wydarzenia`, który umożliwia dodawanie, edytowanie, publikowanie, ukrywanie i usuwanie wydarzeń.
+Operacje administracyjne są zabezpieczone po stronie backendu Go. Dostęp do endpointów `/api/admin/events` wymaga zalogowania i posiadania roli `admin`. Kontrola uprawnień realizowana jest za pomocą mechanizmu `RequireRole`.
 
 **Ograniczenia:** nie ma jeszcze pełnego panelu zarządzania kontami użytkowników ani wszystkich planowanych funkcji administracyjnych.
 
@@ -291,40 +300,281 @@ Aplikacja działa w architekturze klient–serwer. Użytkownik korzysta z interf
 
 W przypadku logowania backend weryfikuje dane użytkownika, tworzy sesję i zapisuje ją w bazie danych. W przypadku panelu wydarzeń administrator może zarządzać wydarzeniami, a backend sprawdza jego uprawnienia przed wykonaniem operacji.
 
-
 ## 6. Instalacja i uruchamianie
 
 Poniższa instrukcja dotyczy **systemu Windows i pobrania gotowego archiwum ZIP**, bez klonowania repozytorium i bez używania Git. Oddzielnie opisano uruchomienie obecnej strony oraz wymagania do działania logowania.
 
-### 6.1. Co trzeba zainstalować na komputerze
+### 6.1. Wymagania systemowe
 
-1. **XAMPP** zawierający serwer Apache, PHP 8.1 lub nowszy oraz MySQL/MariaDB (wraz z phpMyAdmin).
-2. **Przeglądarkę internetową**, np. Chrome, Firefox lub Edge.
-3. **Program do rozpakowywania plików ZIP** — w Windows wystarczy wbudowana funkcja „Wyodrębnij wszystkie”.
-4. **Dostęp do internetu**, jeśli Bootstrap ma zostać pobrany z CDN.
+Przed rozpoczęciem instalacji należy przygotować następujące oprogramowanie:
 
-Do samego uruchomienia pobranej aplikacji **nie potrzeba instalować Git ani GitHub Desktop**. Nie jest również wymagany Composer ani Node.js.
+1. **Go 1.26 lub nowszy** – środowisko wymagane do uruchomienia backendu aplikacji. Instalator dostępny jest na stronie https://go.dev/dl/.
+2. **Node.js 20.9 lub nowszy** – wymagany do uruchomienia frontendu. Zalecana jest aktualna wersja LTS. Instalator dostępny jest na stronie https://nodejs.org/.
+3. **MySQL 8 lub MariaDB** – system zarządzania bazą danych wykorzystywaną przez aplikację.
+4. **XAMPP** – może zostać wykorzystany do uruchomienia MySQL/MariaDB oraz phpMyAdmin.
+5. **Przeglądarka internetowa** – np. Google Chrome, Mozilla Firefox lub Microsoft Edge.
+6. **Program do rozpakowywania plików ZIP** – w systemie Windows można skorzystać z wbudowanej funkcji „Wyodrębnij wszystkie”.
 
-### 6.2. Pobranie i rozpakowanie aplikacji ZIP
+Do uruchomienia aplikacji nie jest wymagany Git, GitHub Desktop ani Composer.
 
-1. Pobierz archiwum ZIP z aktualną wersją projektu.
-2. Kliknij pobrany plik prawym przyciskiem myszy i wybierz **Wyodrębnij wszystkie**.
-3. Otwórz wypakowany folder i znajdź katalog zawierający bezpośrednio plik `index.php` oraz katalogi `assets`, `config`, `includes` i `pages`.
-4. Skopiuj **ten właśnie katalog** do folderu `C:\xampp\htdocs\`.
-5. Nadaj mu nazwę `spoldzielnia_mieszkaniowa`.
+### 6.2. Przygotowanie bazy danych
 
-Docelowa lokalizacja pliku startowego powinna być następująca:
+Aplikacja wykorzystuje bazę danych MySQL/MariaDB o nazwie `mirmilowo`.
 
-```text
-C:\xampp\htdocs\spoldzielnia_mieszkaniowa\index.php
+W przypadku korzystania z XAMPP należy wykonać następujące czynności:
+
+1. Uruchomić XAMPP Control Panel.
+2. Włączyć usługi MySQL oraz Apache.
+3. Otworzyć przeglądarkę internetową i przejść pod adres:
+
+   `http://localhost/phpmyadmin`
+
+4. Wybrać zakładkę **Import** na poziomie serwera.
+5. Wskazać plik `database/schema.sql` znajdujący się w katalogu projektu.
+6. Wykonać import pliku.
+
+Plik `schema.sql` automatycznie tworzy bazę danych `mirmilowo` oraz wymagane tabele:
+
+- `users` – przechowuje konta użytkowników;
+- `sessions` – przechowuje informacje o sesjach użytkowników;
+- `cultural_events` – przechowuje dane dotyczące wydarzeń kulturalnych.
+
+Alternatywnie można wykonać import za pomocą terminala klienta MySQL:
+
+```sql
+SOURCE /pelna/sciezka/do/mirmilowo/database/schema.sql;
 ```
 
-### 6.3. Uruchomienie strony głównej
+Po zaimportowaniu struktury bazy należy zaimportować również plik `database/seed.sql`. Zawiera on trzy przykładowe wydarzenia: opublikowane przyszłe, opublikowane archiwalne oraz ukryte.
 
-1. Otwórz **XAMPP Control Panel**.
-2. Kliknij **Start** przy **Apache** i sprawdź, czy serwer się uruchomił.
-3. W przeglądarce wpisz:
+Dane przyszłych wydarzeń zostały ustalone na 21 listopada 2026 r. Po upływie tego terminu wydarzenia naturalnie trafią do archiwum.
 
-   ```text
-   http://localhost/spoldzielnia_mieszkaniowa/
-   ```
+W przypadku istniejącej bazy danych zawierającej już tabele kont użytkowników i sesji można zamiast pełnego schematu wykonać migrację:
+
+`database/migrations/001_cultural_events.sql`
+
+Migrację należy wykonać po wybraniu właściwej bazy danych. Dodaje ona brakującą tabelę wydarzeń i nie zmienia struktury już istniejących tabel.
+
+Plik `seed.sql` nie tworzy kont użytkowników. Konta administratora i mieszkańca zostaną utworzone w kolejnym etapie instalacji.
+
+Ponowny import schematu nie usuwa istniejących danych. Należy jednak pamiętać, że instrukcje `IF NOT EXISTS` nie aktualizują struktury już istniejących tabel. W przypadku przyszłych zmian struktury bazy należy przygotowywać osobne migracje SQL.
+
+### 6.3. Konfiguracja i uruchomienie backendu
+
+Backend aplikacji został napisany w języku Go i odpowiada za obsługę komunikacji z bazą danych, logowania, sesji użytkowników oraz funkcjonalności dostępnych przez API.
+
+W celu uruchomienia backendu należy:
+
+1. Otworzyć folder główny projektu.
+2. Uruchomić PowerShell.
+3. Przejść do katalogu `backend`:
+
+```powershell
+cd backend
+```
+
+4. Ustawić zmienne środowiskowe odpowiedzialne za połączenie z bazą danych:
+
+```powershell
+$env:DB_ADDR = "127.0.0.1:3306"
+$env:DB_NAME = "mirmilowo"
+$env:DB_USER = "root"
+$env:DB_PASSWORD = ""
+$env:APP_ORIGIN = "http://localhost:3000"
+```
+
+Powyższe wartości odpowiadają typowej lokalnej konfiguracji XAMPP. Jeżeli konto `root` posiada hasło lub serwer MySQL/MariaDB działa na innym porcie, należy odpowiednio zmienić wartości zmiennych.
+
+Dostępne ustawienia opisuje plik `backend/.env.example`. Backend odczytuje zmienne ze środowiska procesu i nie wczytuje automatycznie pliku `.env`.
+
+5. Pobrać wymagane zależności:
+
+```powershell
+go mod download
+```
+
+6. Uruchomić serwer backendowy:
+
+```powershell
+go run ./cmd/server
+```
+
+Po poprawnym uruchomieniu backend domyślnie nasłuchuje lokalnie pod adresem:
+
+`http://127.0.0.1:8080`
+
+Terminal, w którym uruchomiono backend, musi pozostać otwarty podczas korzystania z aplikacji.
+
+W systemach macOS/Linux odpowiednikiem konfiguracji zmiennych środowiskowych jest:
+
+```bash
+export DB_ADDR=127.0.0.1:3306 DB_NAME=mirmilowo DB_USER=root DB_PASSWORD=''
+export APP_ORIGIN=http://localhost:3000
+go mod download
+go run ./cmd/server
+```
+
+### 6.4. Tworzenie kont użytkowników
+
+Po uruchomieniu backendu należy utworzyć konta użytkowników, które umożliwią logowanie do aplikacji.
+
+Projekt udostępnia narzędzie konsolowe `create-user`, pozwalające tworzyć konta z odpowiednimi rolami.
+
+W tym celu należy:
+
+1. Otworzyć drugi terminal PowerShell. Nie należy zamykać pierwszego terminala, w którym działa backend.
+2. Przejść do katalogu `backend`.
+3. Ustawić ponownie te same zmienne środowiskowe połączenia z bazą danych, które zostały wykorzystane podczas uruchamiania backendu:
+
+```powershell
+$env:DB_ADDR = "127.0.0.1:3306"
+$env:DB_NAME = "mirmilowo"
+$env:DB_USER = "root"
+$env:DB_PASSWORD = ""
+$env:APP_ORIGIN = "http://localhost:3000"
+```
+
+Zmienne środowiskowe PowerShell obowiązują wyłącznie w terminalu, w którym zostały ustawione.
+
+4. Utworzyć konto administratora:
+
+```powershell
+go run ./cmd/create-user -email admin@example.test -role admin
+```
+
+5. Utworzyć konto mieszkańca:
+
+```powershell
+go run ./cmd/create-user -email mieszkaniec@example.test -role mieszkaniec
+```
+
+Każde polecenie poprosi o podanie hasła, które nie będzie widoczne podczas wpisywania.
+
+Hasło powinno mieć długość od 12 do 72 bajtów. Polskie znaki mogą zajmować więcej niż jeden bajt.
+
+W bazie danych przechowywany jest wyłącznie skrót hasła wygenerowany przy użyciu algorytmu bcrypt.
+
+Ponowne wykonanie polecenia dla tego samego adresu e-mail spowoduje wyświetlenie błędu zamiast nadpisania istniejącego konta.
+
+Podane adresy e-mail są przykładowe i mogą zostać zastąpione własnymi danymi.
+
+### 6.5. Uruchomienie frontendu Next.js
+
+Frontend został przygotowany z wykorzystaniem Next.js, React oraz TypeScript. Odpowiada za wyświetlanie interfejsu użytkownika i komunikację z backendem.
+
+W celu uruchomienia frontendu należy:
+
+1. Otworzyć kolejne okno PowerShell.
+2. Przejść do głównego katalogu projektu, a następnie do folderu `frontend`:
+
+```powershell
+cd frontend
+```
+
+3. Zainstalować wymagane zależności:
+
+```powershell
+npm ci
+```
+
+4. Uruchomić aplikację w trybie deweloperskim:
+
+```powershell
+npm run dev
+```
+
+W przypadku problemów z wykonywaniem skryptu `npm.ps1` w PowerShell można wykorzystać alternatywne polecenia:
+
+```powershell
+npm.cmd ci
+npm.cmd run dev
+```
+
+Po poprawnym uruchomieniu frontendu należy otworzyć przeglądarkę i wpisać adres:
+
+`http://localhost:3000`
+
+Formularz logowania znajduje się pod adresem:
+
+`http://localhost:3000/login`
+
+Podczas korzystania z aplikacji backend Go oraz serwer MySQL/MariaDB muszą pozostawać uruchomione.
+
+Domyślna konfiguracja działa bez konieczności tworzenia pliku `.env.local`.
+
+W przypadku zmiany adresu backendu należy skopiować plik `frontend/.env.example` do `frontend/.env.local` i ustawić odpowiednią wartość `API_INTERNAL_URL`.
+
+Po zmianie konfiguracji należy ponownie uruchomić Next.js. W przypadku wersji produkcyjnej wymagane jest ponowne wykonanie kompilacji.
+
+Należy używać dokładnie tego samego hosta, który został ustawiony w zmiennej `APP_ORIGIN`. Adresy `localhost` i `127.0.0.1` są traktowane jako różne originy.
+
+Jeżeli Next.js zaproponuje uruchomienie aplikacji na porcie 3001 z powodu zajętego portu 3000, należy zwolnić port 3000 albo odpowiednio zmienić wartość `APP_ORIGIN` w backendzie i ponownie go uruchomić.
+
+### 6.6. Testowanie i kompilacja aplikacji
+
+Po uruchomieniu wszystkich elementów systemu można sprawdzić poprawność działania backendu i frontendu.
+
+**Testowanie backendu**
+
+W katalogu `backend` należy wykonać następujące polecenia:
+
+```powershell
+go test ./...
+go vet ./...
+go build ./cmd/server ./cmd/create-user
+```
+
+Poszczególne polecenia odpowiadają za:
+
+- `go test ./...` – uruchomienie testów jednostkowych backendu;
+- `go vet ./...` – sprawdzenie potencjalnych błędów i nieprawidłowości w kodzie;
+- `go build ./cmd/server ./cmd/create-user` – kompilację programów backendowych.
+
+Testy Go wykorzystują atrapę SQL i nie wymagają uruchomionej bazy danych.
+
+Sprawdzają między innymi:
+
+- proces logowania;
+- rotację i usuwanie sesji;
+- obsługę nieprawidłowych haseł;
+- kontrolę origin i zabezpieczenia CSRF;
+- kontrolę ról użytkowników;
+- obsługę awarii SQL.
+
+**Testowanie i kompilacja frontendu**
+
+W katalogu `frontend` należy wykonać:
+
+```powershell
+npm run typecheck
+npm run build
+```
+
+Polecenie `npm run typecheck` sprawdza poprawność typów TypeScript, natomiast `npm run build` przygotowuje produkcyjną wersję aplikacji.
+
+Uruchomienie wcześniej zbudowanej wersji produkcyjnej odbywa się za pomocą polecenia:
+
+```powershell
+npm start
+```
+
+Polecenia `npm start` nie należy uruchamiać równocześnie z `npm run dev` na tym samym porcie.
+
+**Testowanie ręczne z wykorzystaniem rzeczywistej bazy danych**
+
+Po uruchomieniu MySQL/MariaDB, backendu oraz frontendu należy wykonać podstawowe testy:
+
+1. Zalogować się na utworzone konto administratora.
+2. Zalogować się na utworzone konto mieszkańca.
+3. Sprawdzić komunikat pojawiający się po podaniu nieprawidłowego hasła.
+4. Odświeżyć stronę po zalogowaniu i sprawdzić, czy sesja nadal jest aktywna.
+5. Zrestartować backend i ponownie odświeżyć stronę.
+6. Wylogować użytkownika.
+7. Sprawdzić, czy endpoint `/api/auth/me` zwraca odpowiedź:
+
+```json
+{"user":null}
+```
+
+8. Otworzyć menu aplikacji na urządzeniu mobilnym.
+9. Sprawdzić zachowanie aplikacji po wejściu na nieistniejący adres.
