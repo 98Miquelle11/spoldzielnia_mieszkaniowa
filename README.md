@@ -7,7 +7,8 @@ MySQL/MariaDB.
 
 - Strona główna i sześć kafelków sekcji.
 - Wszystkie pozycje nawigacji z oryginalnego `config/routes.php`.
-- Podstrony „Etap w przygotowaniu”.
+- Publiczna lista `/imprezy` i szczegóły `/imprezy/{id}`: filtry, terminy Europe/Warsaw, obsługa błędów i dużych list.
+- Pozostałe planowane sekcje mają strony „Etap w przygotowaniu”.
 - Logowanie, odczyt bieżącej sesji i wylogowanie przez API Go.
 - Konta `mieszkaniec` i `admin`; narzędzie do ich tworzenia.
 - Trwałe sesje MySQL: pozostają aktywne po restarcie backendu, wygasają po 8 h.
@@ -32,13 +33,20 @@ wyłącznie po to, aby otworzyć phpMyAdmin i zaimportować bazę.
 
 W XAMPP uruchom MySQL oraz Apache. Otwórz http://localhost/phpmyadmin,
 wybierz zakładkę **Import** na poziomie serwera i wskaż `database/schema.sql`.
-Plik sam tworzy bazę `mirmilowo` oraz tabele `users` i `sessions`.
+Plik sam tworzy bazę `mirmilowo` oraz tabele `users`, `sessions` i `cultural_events`.
 
 Alternatywnie w terminalu klienta MySQL:
 
 ```sql
 SOURCE /pelna/sciezka/do/mirmilowo/database/schema.sql;
 ```
+
+Następnie zaimportuj `database/seed.sql`: dodaje trzy fikcyjne wydarzenia
+(opublikowane przyszłe, opublikowane archiwalne i ukryte). Dane przyszłe
+są ustalone na 21 listopada 2026; po tym terminie naturalnie trafią do archiwum.
+Dla istniejącej bazy z tabelami kont i sesji można zamiast pełnego schematu
+wykonać `database/migrations/001_cultural_events.sql` po wybraniu swojej bazy.
+Migracja dodaje brakującą tabelę; nie zmienia struktury już istniejącej tabeli.
 
 `database/seed.sql` nie dodaje kont ze wspólnymi hasłami. Konta utworzysz w kroku 3.
 Ponowny import schematu nie usuwa danych. `IF NOT EXISTS` nie aktualizuje jednak
@@ -129,7 +137,7 @@ go vet ./...
 go build ./cmd/server ./cmd/create-user
 ```
 
-Testy używają atrapy SQL i nie wymagają działającej bazy. Sprawdzają m.in.
+Testy Go używają atrapy SQL i nie wymagają działającej bazy. Sprawdzają m.in.
 logowanie, rotację i usuwanie sesji, błędne hasła, origin/CSRF, role i awarie SQL.
 
 Frontend (w `frontend`):
@@ -159,7 +167,7 @@ frontend/app/               strony Next.js i CSS
 frontend/components/        menu, formularz i stan logowania
 frontend/lib/routes.ts      polskie tytuły, grupy i opisy
 database/schema.sql         struktura MySQL
-database/seed.sql           wskazówki tworzenia kont
+database/seed.sql           trzy fikcyjne wydarzenia
 docs/                       opis migracji i dalszych etapów
 ```
 
@@ -191,3 +199,30 @@ Następnie na osobnej gałęzi oryginalnego repozytorium dodaj strukturę z tej 
 (bez `node_modules`, `.next` i własnych sekretów), zastępując stary punkt wejścia
 PHP oraz nieaktualne instrukcje. Zachowaj historię Git i plik LICENSE. Paczka
 nie zawiera metadanych `.git`; niczego nie opublikowano automatycznie na GitHub.
+
+
+## Weryfikacja modułu wydarzeń
+
+Wymagania z `Robota(3).docx`, ustalone kontrakty, raport zmian i wyniki prób
+opisano w `docs/AUDYT_WYMAGAN.md` i `docs/WERYFIKACJA.md`.
+
+Aby uruchomić testy integracyjne i przeglądarkowe, uruchom MySQL/MariaDB,
+backend i produkcyjny frontend według instrukcji powyżej. Użyj osobnej bazy
+z danymi testowymi: scenariusze administracyjne tworzą i usuwają wydarzenia.
+W folderze `frontend`:
+
+```bash
+npx playwright install chromium
+export E2E_ADMIN_EMAIL='twoj-admin@example.test'
+export E2E_ADMIN_PASSWORD='haslo-konta-testowego'
+export E2E_RESIDENT_EMAIL='twoj-mieszkaniec@example.test'
+export E2E_RESIDENT_PASSWORD='haslo-konta-testowego'
+npm run test:e2e
+```
+
+W PowerShell zamiast `export NAZWA='wartosc'` użyj `$env:NAZWA = 'wartosc'`.
+Hasła dobierz samodzielnie przez narzędzie `create-user`; nie zapisuj ich w Git.
+Brak zmiennych kont pomija scenariusze wymagające tych kont. Same testy HTTP
+bez przeglądarki uruchom przez `npm run test:e2e -- tests/api.spec.ts`.
+Domyślny adres to `http://localhost:3000`; inny ustaw w `E2E_BASE_URL` i dopasuj
+`APP_ORIGIN` backendu. Opcjonalny `E2E_CHROMIUM_PATH` wskazuje własny plik Chromium.
