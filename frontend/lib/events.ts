@@ -50,3 +50,18 @@ export async function fetchEvents(path: string, signal: AbortSignal): Promise<un
   try { return await response.json(); }
   catch { throw new EventsError("Serwer zwrócił nieprawidłowe dane.", 0); }
 }
+
+export type EventPage = {
+  items: CulturalEvent[];
+  pagination: { page: number; limit: number; has_more: boolean };
+};
+export function isEventPage(value: unknown): value is EventPage {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  if (!Array.isArray(v.items) || !v.items.every(isCulturalEvent) ||
+      !v.pagination || typeof v.pagination !== "object") return false;
+  const p = v.pagination as Record<string, unknown>;
+  return typeof p.page === "number" && Number.isSafeInteger(p.page) && p.page >= 1 && p.page <= 1000000 &&
+    typeof p.limit === "number" && Number.isInteger(p.limit) && p.limit >= 1 && p.limit <= 50 &&
+    typeof p.has_more === "boolean" && v.items.length <= p.limit;
+}
