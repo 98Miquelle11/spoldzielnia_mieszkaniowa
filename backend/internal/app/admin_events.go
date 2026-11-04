@@ -94,12 +94,23 @@ func adminEventID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	return id, true
 }
 func decodeAdminEventInput(w http.ResponseWriter, r *http.Request) (events.Input, bool) {
+	// Wskaźnik odróżnia jawne false od brakującej wartości lub null.
+	var payload struct {
+		events.Input
+		Publication *bool `json:"is_published"`
+	}
 	var input events.Input
 	r.Body = http.MaxBytesReader(w, r.Body, 128*1024)
-	if err := decodeStrictJSON(r.Body, &input); err != nil {
+	if err := decodeStrictJSON(r.Body, &payload); err != nil {
 		fail(w, 400, "Nieprawidłowe dane formularza. Daty muszą mieć format RFC 3339.")
 		return input, false
 	}
+	input = payload.Input
+	if payload.Publication == nil {
+		writeJSON(w, 400, errorResponse{Error: "Popraw zaznaczone pola.", Fields: map[string]string{"is_published": "Podaj status publikacji jako true lub false."}})
+		return input, false
+	}
+	input.IsPublished = *payload.Publication
 	if fields := events.ValidateInput(input); len(fields) > 0 {
 		writeJSON(w, 400, errorResponse{Error: "Popraw zaznaczone pola.", Fields: fields})
 		return input, false

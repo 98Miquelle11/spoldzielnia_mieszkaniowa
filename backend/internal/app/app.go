@@ -11,6 +11,7 @@ import (
 	"mime"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -201,6 +202,28 @@ func decodeStrictJSON(r io.Reader, dst any) error {
 
 	if err := dec.Decode(new(any)); err != io.EOF {
 		return errors.New("expected one JSON value")
+	}
+
+	// Powtórzone pola (także różniące się wielkością liter) są niejednoznaczne.
+	object := json.NewDecoder(bytes.NewReader(raw))
+	if _, err := object.Token(); err != nil {
+		return err
+	}
+	seen := make(map[string]bool)
+	for object.More() {
+		key, err := object.Token()
+		if err != nil {
+			return err
+		}
+		name := strings.ToLower(key.(string))
+		if seen[name] {
+			return errors.New("duplicate JSON field")
+		}
+		seen[name] = true
+		var value json.RawMessage
+		if err := object.Decode(&value); err != nil {
+			return err
+		}
 	}
 
 	fields := json.NewDecoder(bytes.NewReader(raw))
