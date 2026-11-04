@@ -9,7 +9,9 @@ import (
 )
 
 type Repository struct{ db *sql.DB }
+
 func NewRepository(db *sql.DB) *Repository { return &Repository{db: db} }
+
 const columns = "id, title, description, starts_at, ends_at, location, is_published, created_at, updated_at"
 
 type scanner interface{ Scan(...any) error }
