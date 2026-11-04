@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useAuth } from "./auth";
 
-import type { CulturalEvent } from "@/lib/events";
+import { isCulturalEvent, type CulturalEvent } from "@/lib/events";
 
 type EventInput = Pick<
   CulturalEvent,
@@ -29,6 +29,8 @@ type Draft = {
   starts_at: string;  //daty w formacie wymaganym przez input datetime-local.
   ends_at: string;
   is_published: boolean;
+  original_starts_at?: string;
+  original_ends_at?: string;
 };
 
 type FieldErrors = Record<string, string>;
@@ -158,6 +160,8 @@ function eventToDraft(event: CulturalEvent): Draft {
     starts_at: toLocalInput(event.starts_at),
     ends_at: toLocalInput(event.ends_at),
     is_published: event.is_published,
+    original_starts_at: event.starts_at,
+    original_ends_at: event.ends_at,
   };
 }
 
@@ -202,6 +206,8 @@ function isDraft(value: unknown): value is Draft {
     typeof draft.location === "string" &&
     typeof draft.starts_at === "string" &&
     typeof draft.ends_at === "string" &&
+    [draft.original_starts_at, draft.original_ends_at].every(value =>
+      value === undefined || (typeof value === "string" && Number.isFinite(Date.parse(value)))) &&
     typeof draft.is_published === "boolean"
   );
 }
@@ -226,11 +232,11 @@ function validateDraft(draft: Draft): FieldErrors {
   }
 
   const startsAt = draft.starts_at
-    ? new Date(draft.starts_at)
+    ? new Date(draft.original_starts_at && toLocalInput(draft.original_starts_at) === draft.starts_at ? draft.original_starts_at : draft.starts_at)
     : null;
 
   const endsAt = draft.ends_at
-    ? new Date(draft.ends_at)
+    ? new Date(draft.original_ends_at && toLocalInput(draft.original_ends_at) === draft.ends_at ? draft.original_ends_at : draft.ends_at)
     : null;
 
   if (!startsAt || Number.isNaN(startsAt.getTime())) {
@@ -239,6 +245,13 @@ function validateDraft(draft: Draft): FieldErrors {
 
   if (endsAt && Number.isNaN(endsAt.getTime())) {
     errors.ends_at = "Podaj poprawny termin zakończenia.";
+  }
+
+  // Date normalizuje nieistniejącą godzinę podczas wiosennej zmiany czasu.
+  for (const [field, value] of [["starts_at", startsAt], ["ends_at", endsAt]] as const) {
+    if (value && !Number.isNaN(value.getTime()) && toLocalInput(value.toISOString()).slice(0, 16) !== draft[field].slice(0, 16)) {
+      errors[field] = "Ta godzina nie istnieje w strefie przeglądarki (zmiana czasu). Wybierz inny termin.";
+    }
   }
 
   // błąd kolejności terminów pokazujemy przed wysłaniem żądania równe rozpoczęcie i zakończenie dozwolone
@@ -262,7 +275,7 @@ function validateDraft(draft: Draft): FieldErrors {
 }
 
 export function AdminEvents() {
-  const { user, loading: authLoading, setUser } = useAuth();
+  const { user, loading: authLoading, error: authError, reload, setUser } = useAuth();
 
   const [events, setEvents] = useState<CulturalEvent[]>([]);
 
@@ -347,7 +360,7 @@ export function AdminEvents() {
         items: CulturalEvent[];
       }>("", { method: "GET" });
 
-      if (!Array.isArray(result.items)) {
+      if (!Array.isArray(result.items) || !result.items.every(isCulturalEvent)) {
         throw new Error("Serwer zwrócił nieprawidłową listę wydarzeń.");
       }
 
@@ -432,6 +445,7 @@ export function AdminEvents() {
       const event = await adminRequest<CulturalEvent>(`/${id}`, {
         method: "GET",
       });
+      if (!isCulturalEvent(event)) throw new Error("Serwer zwrócił nieprawidłowe dane wydarzenia.");
       setDraft(eventToDraft(event));
       setFieldErrors({});
       setFormError("");
@@ -461,12 +475,18 @@ export function AdminEvents() {
       return;
     }
 
+    const startsAt = draft.original_starts_at && toLocalInput(draft.original_starts_at) === draft.starts_at
+      ? draft.original_starts_at : new Date(draft.starts_at).toISOString();
+    const endsAt = !draft.ends_at ? startsAt
+      : draft.original_ends_at && toLocalInput(draft.original_ends_at) === draft.ends_at
+        ? draft.original_ends_at : new Date(draft.ends_at).toISOString();
     const input: EventInput = {
       title: draft.title.trim(),
       description: draft.description.trim(),
       location: draft.location.trim(),
-      starts_at: new Date(draft.starts_at).toISOString(),
-      ends_at: new Date(draft.ends_at || draft.starts_at).toISOString(),
+      // Zachowaj oryginalną chwilę także w powtarzającej się godzinie jesienią.
+      starts_at: startsAt,
+      ends_at: endsAt,
       is_published: draft.is_published,
     };
 
@@ -511,6 +531,7 @@ export function AdminEvents() {
         { method: "GET" },
       );
 
+      if (!isCulturalEvent(current)) throw new Error("Serwer zwrócił nieprawidłowe dane wydarzenia.");
       const published = !current.is_published;
 
       await adminRequest<void>(`/${current.id}`, {
@@ -607,6 +628,12 @@ export function AdminEvents() {
       </div>
     );
   }
+
+  if (authError) return <section className="container py-5">
+    <h1 className="h2">Zarządzanie wydarzeniami</h1>
+    <p role="alert">{authError}</p>
+    <button className="btn btn-primary" onClick={() => void reload()}>Sprawdź ponownie</button>
+  </section>;
 
   //prezentacja
   if (!user) {
@@ -890,7 +917,7 @@ export function AdminEvents() {
                 <div className="d-flex flex-column flex-lg-row justify-content-between gap-3">
                   <div className="flex-grow-1">
                     <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
-                      <h2 className="h5 mb-0">{event.title}</h2>
+                      <h2 className="h5 mb-0 text-break">{event.title}</h2>
 
                       <span
                         className={`badge ${
