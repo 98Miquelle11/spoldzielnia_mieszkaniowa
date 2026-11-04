@@ -28,3 +28,6 @@ body.admin-mode .hero { background: linear-gradient(115deg, #f3eddd, #fbf8ef); b
 .dropdown-item.active { background-color: var(--brand); }
 .skip-link:focus { display: block; padding: .75rem; background: white; }
 @media (max-width: 991px) { .nav-submenu { position: static; box-shadow: none !important; } }
+
+.card, .card-body { min-width: 0; }
+.card h1, .card h2, .card p { overflow-wrap: anywhere; }
