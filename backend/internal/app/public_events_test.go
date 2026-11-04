@@ -22,9 +22,9 @@ func TestPublicListContract(t *testing.T) {
 			if period == "past" {
 				condition, order = "ends_at < ?", "ends_at DESC, id DESC"
 			}
-			mock.ExpectQuery(regexp.QuoteMeta("SELECT "+eventsColumnsForTest+" FROM cultural_events WHERE is_published = ? AND "+condition+" ORDER BY "+order)).WithArgs(true, sqlmock.AnyArg()).WillReturnRows(sqlmock.NewRows(strings.Split(eventsColumnsForTest, ", ")))
+			mock.ExpectQuery(regexp.QuoteMeta("SELECT "+strings.Replace(eventsColumnsForTest, "description", "LEFT(description, 240) AS description", 1)+" FROM cultural_events WHERE is_published = ? AND "+condition+" ORDER BY "+order+" LIMIT ? OFFSET ?")).WithArgs(true, sqlmock.AnyArg(), 21, 0).WillReturnRows(sqlmock.NewRows(strings.Split(eventsColumnsForTest, ", ")))
 			w := request(a, "GET", "/api/events?period="+period, "", nil)
-			if w.Code != 200 || strings.TrimSpace(w.Body.String()) != `{"items":[]}` {
+			if w.Code != 200 || strings.TrimSpace(w.Body.String()) != `{"items":[],"pagination":{"page":1,"limit":20,"has_more":false}}` {
 				t.Fatalf("%d %s", w.Code, w.Body)
 			}
 		})

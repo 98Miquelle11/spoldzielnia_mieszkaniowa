@@ -11,24 +11,28 @@ import (
 
 func (a *App) listPublishedEvents(w http.ResponseWriter, r *http.Request) {
 	period := events.Period(r.URL.Query().Get("period"))
+	if period != "" && period != events.Upcoming && period != events.Archived {
+		fail(w, http.StatusBadRequest, "Nieprawidłowy filtr. Dozwolone wartości period: upcoming lub past.")
+		return
+	}
+	options, ok := eventPageOptions(w, r)
+	if !ok {
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
-	items, err := a.events.ListPublished(ctx, period)
+	result, err := a.events.ListPublishedPage(ctx, period, options)
 	if err != nil {
 		if errors.Is(err, events.ErrInvalidInput) {
-			writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "Nieprawidłowe parametry listy wydarzeń."})
 			return
 		}
 		a.dbError(w, err)
 		return
 	}
 
-	if items == nil {
-		items = []events.Event{}
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (a *App) getPublishedEvent(w http.ResponseWriter, r *http.Request) {

@@ -11,14 +11,18 @@ import (
 )
 
 func (a *App) listAdminEvents(w http.ResponseWriter, r *http.Request) {
+	options, ok := eventPageOptions(w, r)
+	if !ok {
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	items, err := a.events.ListAll(ctx)
+	result, err := a.events.ListAllPage(ctx, options)
 	if err != nil {
 		a.dbError(w, err)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"items": items})
+	writeJSON(w, 200, result)
 }
 func (a *App) getAdminEvent(w http.ResponseWriter, r *http.Request) {
 	id, ok := adminEventID(w, r)

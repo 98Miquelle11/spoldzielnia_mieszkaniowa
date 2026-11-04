@@ -185,7 +185,7 @@ func TestAdminEventListRequiresAdmin(t *testing.T) {
 	adminCookie := &http.Cookie{Name: cookieName, Value: strings.Repeat("d", 64)}
 	mock.ExpectQuery("SELECT u.id.*FROM sessions s.*JOIN users u").WithArgs(tokenHash(adminCookie.Value)).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "role"}).AddRow(1, "admin@example.test", "admin"))
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT " + eventsColumnsForTest + " FROM cultural_events ORDER BY starts_at DESC, id DESC")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT " + strings.Replace(eventsColumnsForTest, "description", "LEFT(description, 240) AS description", 1) + " FROM cultural_events ORDER BY starts_at DESC, id DESC LIMIT ? OFFSET ?")).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "title", "description", "starts_at", "ends_at", "location", "is_published", "created_at", "updated_at"}))
 	w = request(a, "GET", "/api/admin/events", "", adminCookie)
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"items":[]`) {
