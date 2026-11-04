@@ -8,3 +8,5 @@ backend/server
 *.log
 .DS_Store
 .vs/
+frontend/test-results/
+frontend/playwright-report/
