@@ -19,7 +19,7 @@ func (a *App) listAdminEvents(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	result, err := a.events.ListAllPage(ctx, options)
 	if err != nil {
-		a.dbError(w, err)
+		a.dbError(w, r, err)
 		return
 	}
 	writeJSON(w, 200, result)
@@ -33,7 +33,7 @@ func (a *App) getAdminEvent(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	event, err := a.events.GetByID(ctx, id)
 	if err != nil {
-		a.eventError(w, err)
+		a.eventError(w, r, err)
 		return
 	}
 	writeJSON(w, 200, event)
@@ -47,7 +47,7 @@ func (a *App) createAdminEvent(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	id, err := a.events.Create(ctx, input)
 	if err != nil {
-		a.eventError(w, err)
+		a.eventError(w, r, err)
 		return
 	}
 	w.Header().Set("Location", fmt.Sprintf("/api/admin/events/%d", id))
@@ -65,7 +65,7 @@ func (a *App) updateAdminEvent(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	if err := a.events.Update(ctx, id, input); err != nil {
-		a.eventError(w, err)
+		a.eventError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -84,7 +84,7 @@ func (a *App) deleteAdminEvent(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	if err := a.events.Delete(ctx, id); err != nil {
-		a.eventError(w, err)
+		a.eventError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -121,13 +121,13 @@ func decodeAdminEventInput(w http.ResponseWriter, r *http.Request) (events.Input
 	}
 	return input, true
 }
-func (a *App) eventError(w http.ResponseWriter, err error) {
+func (a *App) eventError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, events.ErrNotFound):
 		fail(w, 404, "Nie znaleziono wydarzenia.")
 	case errors.Is(err, events.ErrInvalidInput):
 		fail(w, 400, "Nieprawidłowe dane wydarzenia.")
 	default:
-		a.dbError(w, err)
+		a.dbError(w, r, err)
 	}
 }

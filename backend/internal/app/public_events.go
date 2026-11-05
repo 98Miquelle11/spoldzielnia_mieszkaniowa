@@ -28,7 +28,7 @@ func (a *App) listPublishedEvents(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "Nieprawidłowe parametry listy wydarzeń."})
 			return
 		}
-		a.dbError(w, err)
+		a.dbError(w, r, err)
 		return
 	}
 
@@ -51,7 +51,7 @@ func (a *App) getPublishedEvent(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusNotFound, errorResponse{Error: "Nie znaleziono wydarzenia."})
 			return
 		}
-		a.dbError(w, err)
+		a.dbError(w, r, err)
 		return
 	}
 

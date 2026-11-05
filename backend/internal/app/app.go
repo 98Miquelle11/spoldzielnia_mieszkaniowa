@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -110,7 +111,7 @@ func (a *App) Handler() http.Handler {
 		),
 	)
 
-	return mux
+	return requestLogging(mux)
 }
 
 // mutation chroni operacje zmieniające dane.
@@ -158,8 +159,8 @@ func fail(w http.ResponseWriter, status int, message string) {
 	})
 }
 
-func (a *App) dbError(w http.ResponseWriter, err error) {
-	log.Printf("database error: %v", err)
+func (a *App) dbError(w http.ResponseWriter, r *http.Request, err error) {
+	log.Printf("database error request_id=%s method=%s path=%q error=%q", requestID(r), r.Method, r.URL.Path, err)
 
 	fail(
 		w,
@@ -215,7 +216,7 @@ func decodeStrictJSON(r io.Reader, dst any) error {
 		if err != nil {
 			return err
 		}
-		name := strings.ToLower(key.(string))
+		name := foldJSONKey(key.(string))
 		if seen[name] {
 			return errors.New("duplicate JSON field")
 		}
@@ -240,11 +241,25 @@ func (a *App) health(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	if err := a.DB.PingContext(ctx); err != nil {
-		a.dbError(w, err)
+		a.dbError(w, r, err)
 		return
 	}
 
 	writeJSON(w, http.StatusOK, map[string]bool{
 		"ok": true,
 	})
+}
+
+// foldJSONKey wybiera najmniejszy znak z cyklu Unicode SimpleFold.
+// Odpowiada porównaniu nazw pól w encoding/json, także dla ſ i K.
+func foldJSONKey(name string) string {
+	return strings.Map(func(r rune) rune {
+		smallest := r
+		for next := unicode.SimpleFold(r); next != r; next = unicode.SimpleFold(next) {
+			if next < smallest {
+				smallest = next
+			}
+		}
+		return smallest
+	}, name)
 }

@@ -66,7 +66,7 @@ func (a *App) currentUser(w http.ResponseWriter, r *http.Request) (*User, error)
 func (a *App) me(w http.ResponseWriter, r *http.Request) {
 	user, err := a.currentUser(w, r)
 	if err != nil {
-		a.dbError(w, err)
+		a.dbError(w, r, err)
 		return
 	}
 	writeJSON(w, 200, map[string]any{"user": user})
@@ -75,7 +75,7 @@ func (a *App) RequireRole(roles []string, next http.HandlerFunc) http.HandlerFun
 	return func(w http.ResponseWriter, r *http.Request) {
 		user, err := a.currentUser(w, r)
 		if err != nil {
-			a.dbError(w, err)
+			a.dbError(w, r, err)
 			return
 		}
 		if user == nil {
@@ -114,7 +114,7 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 	err = a.DB.QueryRowContext(ctx, "SELECT id, email, password_hash, role FROM users WHERE email = ? LIMIT 1", input.Email).Scan(&user.ID, &user.Email, &hash, &user.Role)
 	missing := errors.Is(err, sql.ErrNoRows)
 	if err != nil && !missing {
-		a.dbError(w, err)
+		a.dbError(w, r, err)
 		return
 	}
 	if missing {
@@ -133,23 +133,23 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 	token := hex.EncodeToString(bytes)
 	tx, err := a.DB.BeginTx(ctx, nil)
 	if err != nil {
-		a.dbError(w, err)
+		a.dbError(w, r, err)
 		return
 	}
 	defer tx.Rollback()
 	_, err = tx.ExecContext(ctx, "INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)", tokenHash(token), user.ID, time.Now().UTC().Add(sessionSeconds*time.Second))
 	if err != nil {
-		a.dbError(w, err)
+		a.dbError(w, r, err)
 		return
 	}
 	if old := sessionToken(r); old != "" {
 		if _, err = tx.ExecContext(ctx, "DELETE FROM sessions WHERE token_hash = ?", tokenHash(old)); err != nil {
-			a.dbError(w, err)
+			a.dbError(w, r, err)
 			return
 		}
 	}
 	if err = tx.Commit(); err != nil {
-		a.dbError(w, err)
+		a.dbError(w, r, err)
 		return
 	}
 	a.setCookie(w, token, sessionSeconds)
@@ -166,7 +166,7 @@ func (a *App) logout(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
 		if _, err := a.DB.ExecContext(ctx, "DELETE FROM sessions WHERE token_hash = ?", tokenHash(token)); err != nil {
-			a.dbError(w, err)
+			a.dbError(w, r, err)
 			return
 		}
 	}
