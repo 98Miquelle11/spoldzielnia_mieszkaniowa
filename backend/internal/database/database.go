@@ -27,8 +27,10 @@ func Open(ctx context.Context) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(5)
+	// Zachowuj wszystkie połączenia z puli także po zakończeniu zapytań.
+	const maxConnections = 10
+	db.SetMaxOpenConns(maxConnections)
+	db.SetMaxIdleConns(maxConnections)
 	db.SetConnMaxLifetime(3 * time.Minute)
 	if err := db.PingContext(ctx); err != nil {
 		db.Close()
