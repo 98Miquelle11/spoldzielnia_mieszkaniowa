@@ -29,7 +29,7 @@ export function Header() {
     return () => document.body.classList.remove("admin-mode");
   }, [auth.user?.role]);
   return <header>
-    <nav className="navbar navbar-expand-xxl bg-white border-bottom" aria-label="Nawigacja główna">
+    <nav className="navbar navbar-expand-lg bg-white border-bottom" aria-label="Nawigacja główna">
       <div className="container">
         <Link className="navbar-brand fw-bold" href="/">Mirmiłowo <span className="brand-subtitle d-block fw-normal">Spółdzielnia Mieszkaniowa</span></Link>
         <button className="navbar-toggler" type="button" aria-controls="menu" aria-expanded={open} aria-label="Rozwiń menu" onClick={() => setOpen(!open)}><span className="navbar-toggler-icon" /></button>
@@ -44,7 +44,7 @@ export function Header() {
               </details> : <Link className={`nav-link${pathname === pageHref(entry.slug) ? " active" : ""}`} href={pageHref(entry.slug)} aria-current={pathname === pageHref(entry.slug) ? "page" : undefined}>{entry.title}</Link>}
             </li>)}
             {auth.user?.role === "admin" && <li className="nav-item">
-              <Link className={`nav-link${pathname.startsWith("/admin/wydarzenia") ? " active" : ""}`} href="/admin/wydarzenia" aria-current={pathname.startsWith("/admin/wydarzenia") ? "page" : undefined}>Zarządzaj wydarzeniami</Link>
+              <Link className={`nav-link${pathname.startsWith("/admin/wydarzenia") ? " active" : ""}`} href="/admin/wydarzenia" aria-current={pathname.startsWith("/admin/wydarzenia") ? "page" : undefined}>Panel wydarzeń</Link>
             </li>}
             {auth.user?.role === "admin" && <li className="nav-item d-flex align-items-center px-lg-2">
               <span className="badge admin-role-badge">Administrator</span>
