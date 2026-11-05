@@ -31,3 +31,12 @@ body.admin-mode .hero { background: linear-gradient(115deg, #f3eddd, #fbf8ef); b
 
 .card, .card-body { min-width: 0; }
 .card h1, .card h2, .card p { overflow-wrap: anywhere; }
+
+/* Zawijanie menu pozwala zachować wszystkie pozycje także na laptopach. */
+@media (min-width: 992px) {
+  .navbar-collapse { min-width: 0; }
+  .navbar-nav { flex-wrap: wrap; justify-content: flex-end; align-items: center; }
+  .navbar-nav > .nav-item { flex-shrink: 0; }
+  .navbar-nav .nav-link { white-space: nowrap; }
+  .nav-submenu { right: 0; }
+}
