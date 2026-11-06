@@ -363,6 +363,9 @@ Ponowny import schematu nie usuwa istniejących danych. Należy jednak pamięta�
 
 Backend aplikacji został napisany w języku Go i odpowiada za obsługę komunikacji z bazą danych, logowania, sesji użytkowników oraz funkcjonalności dostępnych przez API.
 
+> **Ważna uwaga dotycząca pakietu XAMPP i serwera Apache:**
+> Projekt nie jest aplikacją PHP serwowaną przez serwer Apache. Nawet jeśli archiwum projektu zostało rozpakowane do katalogu `C:\xampp\htdocs\`, próba otwarcia adresu `http://localhost/spoldzielnia_mieszkaniowa/` w przeglądarce wyświetli jedynie surową listę plików i katalogów (`Index of /spoldzielnia_mieszkaniowa`). Z pakietu XAMPP aplikacja wymaga do działania wyłącznie uruchomionej usługi **MySQL/MariaDB** (serwer Apache służy jedynie do obsługi narzędzia `phpMyAdmin` podczas importu bazy danych w kroku 6.2).
+
 W celu uruchomienia backendu należy:
 
 1. Otworzyć folder główny projektu.
@@ -399,9 +402,9 @@ go mod download
 go run ./cmd/server
 ```
 
-Po poprawnym uruchomieniu backend domyślnie nasłuchuje lokalnie pod adresem:
+Po poprawnym uruchomieniu w oknie terminala pojawi się komunikat potwierdzający start serwera API:
 
-`http://127.0.0.1:8080`
+`RRRR/MM/DD GG:MM:SS Mirmiłowo API: 127.0.0.1:8080; frontend: http://localhost:3000`
 
 Terminal, w którym uruchomiono backend, musi pozostać otwarty podczas korzystania z aplikacji.
 
@@ -464,7 +467,7 @@ Frontend został przygotowany z wykorzystaniem Next.js, React oraz TypeScript. O
 
 W celu uruchomienia frontendu należy:
 
-1. Otworzyć kolejne okno PowerShell.
+1. Otworzyć **nowe, osobne okno PowerShell** (pierwsze okno terminala z uruchomionym w kroku 6.3 backendem Go musi pozostać otwarte).
 2. Przejść do głównego katalogu projektu, a następnie do folderu `frontend`:
 
 ```powershell
@@ -477,18 +480,32 @@ cd frontend
 npm ci
 ```
 
+albo
+
+```powershell
+npm install
+```
+
+> [!NOTE]
+> **Uwaga dotycząca instalacji pakietów (`npm ci` a `npm install`):**
+> Polecenie `npm ci` (*Clean Install*) jest zalecane przy odtwarzaniu środowiska, ponieważ instaluje dokładnie te wersje bibliotek, które zostały zamrożone w pliku `package-lock.json`, nie modyfikując go i usuwając wcześniej ewentualny folder `node_modules`. Alternatywnie podczas lokalnej pracy można użyć polecenia `npm install`.
+>
+> Po zakończeniu pobierania paczek w konsoli pojawi się podsumowanie (np. `added 32 packages...` oraz `found 0 vulnerabilities`). Pojawiające się komunikaty informacyjne, takie jak `packages are looking for funding` lub `npm notice New major version of npm available!`, mają charakter wyłącznie informacyjny i można je bezpiecznie zignorować.
+
 4. Uruchomić aplikację w trybie deweloperskim:
 
 ```powershell
 npm run dev
 ```
 
-W przypadku problemów z wykonywaniem skryptu `npm.ps1` w PowerShell można wykorzystać alternatywne polecenia:
+W przypadku problemów z wykonywaniem skryptu `npm.ps1` w PowerShell (błąd polityki wykonywania skryptów `ExecutionPolicy`) można wykorzystać alternatywne polecenia:
 
 ```powershell
 npm.cmd ci
 npm.cmd run dev
 ```
+
+Okno PowerShell z działającym procesem npm run dev również musi pozostać otwarte podczas korzystania z aplikacji.
 
 Po poprawnym uruchomieniu frontendu należy otworzyć przeglądarkę i wpisać adres:
 
